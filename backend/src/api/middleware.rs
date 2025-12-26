@@ -27,6 +27,9 @@ pub enum AppError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
+
     #[error("Internal server error: {0}")]
     Internal(String),
 }
@@ -109,6 +112,10 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (
                 StatusCode::NOT_FOUND,
                 ErrorDetail::new("NOT_FOUND", msg),
+            ),
+            AppError::NotImplemented(msg) => (
+                StatusCode::NOT_IMPLEMENTED,
+                ErrorDetail::new("NOT_IMPLEMENTED", msg),
             ),
             AppError::Internal(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

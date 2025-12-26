@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::unified_query::DatabaseType;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Query {
     pub id: String,
@@ -15,6 +17,15 @@ pub struct Query {
     pub error_message: Option<String>,
     pub executed_at: Option<DateTime<Utc>>,
     pub limit_applied: bool,
+    /// Database type for unified query execution (optional for backward compatibility)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub database_type: Option<DatabaseType>,
+    /// Original DataFusion SQL query (if using unified query execution)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_query: Option<String>,
+    /// Translated query in target dialect (if using unified query execution)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub translated_query: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -40,6 +51,9 @@ impl Query {
             error_message: None,
             executed_at: None,
             limit_applied: false,
+            database_type: None,
+            original_query: None,
+            translated_query: None,
         }
     }
 

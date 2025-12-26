@@ -59,9 +59,11 @@ impl DataFusionResultConverter {
             })
             .collect();
 
+        let row_count = rows.len();
+
         Ok(QueryResult {
             rows,
-            row_count: rows.len(),
+            row_count,
             execution_time_ms: 0, // Will be set by caller
         })
     }

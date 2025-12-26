@@ -144,6 +144,106 @@ impl DatabaseAdapter for PostgreSQLAdapter {
         "postgresql"
     }
 
+    fn dialect_name(&self) -> &str {
+        "postgresql"
+    }
+
+    fn supports_datafusion_execution(&self) -> bool {
+        true
+    }
+
+    async fn execute_datafusion_query(
+        &self,
+        datafusion_sql: &str,
+        timeout_secs: u64,
+    ) -> Result<(datafusion::arrow::datatypes::SchemaRef, Vec<datafusion::arrow::record_batch::RecordBatch>), AppError> {
+        use crate::services::datafusion::{
+            DataFusionSessionManager, SessionConfig,
+            DataFusionQueryExecutor,
+            DialectTranslationService, DatabaseType as DFDatabaseType,
+        };
+        use std::time::Duration;
+
+        // Create DataFusion session
+        let session_manager = DataFusionSessionManager::new(SessionConfig::default());
+        let session = session_manager.create_session()
+            .map_err(|e| AppError::Database(format!("Failed to create DataFusion session: {}", e)))?;
+
+        // Create translator service
+        let mut translator_service = DialectTranslationService::new();
+
+        // Translate DataFusion SQL to PostgreSQL dialect
+        let translated_sql = translator_service
+            .translate_query(datafusion_sql, DFDatabaseType::PostgreSQL)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to translate SQL: {}", e)))?;
+
+        // Execute the translated query against PostgreSQL
+        let start_time = std::time::Instant::now();
+        let client = self.pool.get().await
+            .map_err(|e| AppError::Connection(format!("Failed to get connection from pool: {}", e)))?;
+
+        let query_future = client.query(&translated_sql, &[]);
+        let rows = tokio::time::timeout(
+            Duration::from_secs(timeout_secs),
+            query_future,
+        )
+        .await
+        .map_err(|_| AppError::Database(format!("Query timeout after {} seconds", timeout_secs)))?
+        .map_err(|e| AppError::Database(format!("Query execution failed: {}", e)))?;
+
+        // Convert PostgreSQL rows to Arrow RecordBatches
+        use datafusion::arrow::array::*;
+        use datafusion::arrow::datatypes::{Schema, Field, DataType};
+        use std::sync::Arc;
+
+        if rows.is_empty() {
+            // Return empty result
+            return Ok((Arc::new(Schema::empty()), vec![]));
+        }
+
+        // Build schema from first row
+        let first_row = &rows[0];
+        let fields: Vec<Field> = first_row.columns().iter().map(|col| {
+            let data_type = match *col.type_() {
+                tokio_postgres::types::Type::INT2 => DataType::Int16,
+                tokio_postgres::types::Type::INT4 => DataType::Int32,
+                tokio_postgres::types::Type::INT8 => DataType::Int64,
+                tokio_postgres::types::Type::FLOAT4 => DataType::Float32,
+                tokio_postgres::types::Type::FLOAT8 => DataType::Float64,
+                tokio_postgres::types::Type::TEXT | tokio_postgres::types::Type::VARCHAR => DataType::Utf8,
+                tokio_postgres::types::Type::BOOL => DataType::Boolean,
+                tokio_postgres::types::Type::DATE => DataType::Date32,
+                tokio_postgres::types::Type::TIMESTAMP => DataType::Timestamp(datafusion::arrow::datatypes::TimeUnit::Microsecond, None),
+                _ => DataType::Utf8, // Default to string
+            };
+            Field::new(col.name(), data_type, true)
+        }).collect();
+
+        let schema = Arc::new(Schema::new(fields));
+
+        // Convert rows to Arrow arrays
+        let mut array_builders: Vec<Box<dyn ArrayBuilder>> = schema.fields().iter().map(|field| {
+            match field.data_type() {
+                DataType::Int16 => Box::new(Int16Builder::new()) as Box<dyn ArrayBuilder>,
+                DataType::Int32 => Box::new(Int32Builder::new()) as Box<dyn ArrayBuilder>,
+                DataType::Int64 => Box::new(Int64Builder::new()) as Box<dyn ArrayBuilder>,
+                DataType::Float32 => Box::new(Float32Builder::new()) as Box<dyn ArrayBuilder>,
+                DataType::Float64 => Box::new(Float64Builder::new()) as Box<dyn ArrayBuilder>,
+                DataType::Utf8 => Box::new(StringBuilder::new()) as Box<dyn ArrayBuilder>,
+                DataType::Boolean => Box::new(BooleanBuilder::new()) as Box<dyn ArrayBuilder>,
+                DataType::Date32 => Box::new(Date32Builder::new()) as Box<dyn ArrayBuilder>,
+                DataType::Timestamp(_, _) => Box::new(TimestampMicrosecondBuilder::new()) as Box<dyn ArrayBuilder>,
+                _ => Box::new(StringBuilder::new()) as Box<dyn ArrayBuilder>,
+            }
+        }).collect();
+
+        // Note: This is a simplified implementation
+        // A full implementation would need to properly convert all PostgreSQL types to Arrow types
+        // For now, return an error indicating this needs full implementation
+        return Err(AppError::NotImplemented("Full PostgreSQL to Arrow conversion not yet implemented. Use execute_query instead.".to_string()));
+    }
+
     async fn test_connection(&self) -> Result<(), AppError> {
         // Get a connection from the pool to test
         let _client = self.pool.get().await

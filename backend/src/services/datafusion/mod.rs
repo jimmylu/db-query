@@ -25,9 +25,9 @@ pub mod translator; // Dialect translation service
 // pub mod dialect_registry; // DatabaseDialectRegistry (coming soon)
 
 // Re-exports for convenient access
-pub use session::DataFusionSessionManager;
+pub use session::{DataFusionSessionManager, SessionConfig};
 pub use catalog::DataFusionCatalogManager;
 pub use dialect::DialectTranslator;
 pub use executor::DataFusionQueryExecutor;
 pub use converter::DataFusionResultConverter;
-pub use translator::DialectTranslationService;
+pub use translator::{DialectTranslationService, DatabaseType};

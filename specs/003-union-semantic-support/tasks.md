@@ -67,11 +67,11 @@
 
 ### Implementation for User Story 1
 
-- [ ] T022 [P] [US1] Create UnifiedQueryRequest model in backend/src/models/unified_query.rs
-- [ ] T023 [P] [US1] Add database_type field to Query model in backend/src/models/query.rs
+- [X] T022 [P] [US1] Create UnifiedQueryRequest model in backend/src/models/unified_query.rs
+- [X] T023 [P] [US1] Add database_type field to Query model in backend/src/models/query.rs
 - [ ] T024 [US1] Refactor PostgreSQLAdapter to use DataFusion executor in backend/src/services/database/postgresql.rs
 - [ ] T025 [US1] Refactor MySQLAdapter to use DataFusion executor in backend/src/services/database/mysql.rs
-- [ ] T026 [US1] Update DatabaseAdapter trait to support DataFusion execution in backend/src/services/database/adapter.rs
+- [X] T026 [US1] Update DatabaseAdapter trait to support DataFusion execution in backend/src/services/database/adapter.rs
 - [ ] T027 [US1] Implement DataFusion-based query execution in PostgreSQLAdapter.execute_query in backend/src/services/database/postgresql.rs
 - [ ] T028 [US1] Implement DataFusion-based query execution in MySQLAdapter.execute_query in backend/src/services/database/mysql.rs
 - [X] T029 [US1] Create dialect translation service in backend/src/services/datafusion/translator.rs
