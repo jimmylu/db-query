@@ -6,11 +6,11 @@
 use datafusion::arrow::array::*;
 use datafusion::arrow::datatypes::{DataType, Schema, SchemaRef};
 use datafusion::arrow::record_batch::RecordBatch;
-use serde_json::{json, Value as JsonValue, Map};
-use anyhow::{Result, Context, anyhow};
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use serde_json::{json, Value as JsonValue};
+use anyhow::{Result, anyhow};
+use chrono::{DateTime, NaiveDate};
 
-use crate::models::query::QueryResult;
+use crate::services::database::adapter::QueryResult;
 
 /// Converts DataFusion query results to JSON format
 ///
@@ -31,13 +31,6 @@ impl DataFusionResultConverter {
         schema: SchemaRef,
         batches: Vec<RecordBatch>,
     ) -> Result<QueryResult> {
-        // Extract column names from schema
-        let columns: Vec<String> = schema
-            .fields()
-            .iter()
-            .map(|field| field.name().clone())
-            .collect();
-
         // Convert all batches to rows
         let mut all_rows = Vec::new();
         for batch in &batches {
@@ -45,10 +38,31 @@ impl DataFusionResultConverter {
             all_rows.extend(rows);
         }
 
+        // Flatten rows from Vec<Vec<JsonValue>> to Vec<JsonValue> where each
+        // row is a JSON object with column names
+        let column_names: Vec<String> = schema
+            .fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect();
+
+        let rows: Vec<serde_json::Value> = all_rows
+            .into_iter()
+            .map(|row_values| {
+                let mut obj = serde_json::Map::new();
+                for (i, value) in row_values.into_iter().enumerate() {
+                    if let Some(col_name) = column_names.get(i) {
+                        obj.insert(col_name.clone(), value);
+                    }
+                }
+                serde_json::Value::Object(obj)
+            })
+            .collect();
+
         Ok(QueryResult {
-            columns,
-            rows: all_rows,
-            row_count: all_rows.len(),
+            rows,
+            row_count: rows.len(),
+            execution_time_ms: 0, // Will be set by caller
         })
     }
 
@@ -250,7 +264,7 @@ impl DataFusionResultConverter {
                     datafusion::arrow::datatypes::TimeUnit::Nanosecond => {
                         let array = array.as_any().downcast_ref::<TimestampNanosecondArray>()
                             .ok_or_else(|| anyhow!("Failed to downcast to TimestampNanosecondArray"))?;
-                        DateTime::from_timestamp_nanos(array.value(row_idx))
+                        Some(DateTime::from_timestamp_nanos(array.value(row_idx)))
                     }
                 };
 
@@ -338,17 +352,19 @@ mod tests {
 
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.columns, vec!["id", "name"]);
         assert_eq!(result.row_count, 3);
         assert_eq!(result.rows.len(), 3);
 
-        // Check first row
-        assert_eq!(result.rows[0][0], json!(1));
-        assert_eq!(result.rows[0][1], json!("Alice"));
+        // Check that rows are objects with column names
+        assert!(result.rows[0].is_object());
+        let row0 = result.rows[0].as_object().unwrap();
+        assert_eq!(row0.get("id"), Some(&json!(1)));
+        assert_eq!(row0.get("name"), Some(&json!("Alice")));
 
         // Check third row (with NULL)
-        assert_eq!(result.rows[2][0], json!(3));
-        assert_eq!(result.rows[2][1], JsonValue::Null);
+        let row2 = result.rows[2].as_object().unwrap();
+        assert_eq!(row2.get("id"), Some(&json!(3)));
+        assert_eq!(row2.get("name"), Some(&JsonValue::Null));
     }
 
     #[test]
@@ -378,14 +394,16 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result.row_count, 2);
 
-        // Check values
-        assert_eq!(result.rows[0][0], json!(100));
-        assert_eq!(result.rows[0][1], json!(1.5));
-        assert_eq!(result.rows[0][2], json!(true));
+        // Check values as objects
+        let row0 = result.rows[0].as_object().unwrap();
+        assert_eq!(row0.get("int_val"), Some(&json!(100)));
+        assert_eq!(row0.get("float_val"), Some(&json!(1.5)));
+        assert_eq!(row0.get("bool_val"), Some(&json!(true)));
 
-        assert_eq!(result.rows[1][0], json!(200));
-        assert_eq!(result.rows[1][1], json!(2.5));
-        assert_eq!(result.rows[1][2], json!(false));
+        let row1 = result.rows[1].as_object().unwrap();
+        assert_eq!(row1.get("int_val"), Some(&json!(200)));
+        assert_eq!(row1.get("float_val"), Some(&json!(2.5)));
+        assert_eq!(row1.get("bool_val"), Some(&json!(false)));
     }
 
     #[test]

@@ -4,6 +4,7 @@ pub mod llm_service;
 pub mod metadata_cache;
 pub mod query_service;
 pub mod database; // Multi-database support with DataFusion
+pub mod datafusion; // DataFusion semantic layer
 
 pub use connection_pool::*;
 pub use db_service::*;

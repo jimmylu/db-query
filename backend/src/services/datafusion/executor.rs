@@ -4,12 +4,11 @@
 
 use datafusion::prelude::*;
 use datafusion::logical_expr::LogicalPlan;
-use datafusion::physical_plan::SendableRecordBatchStream;
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::SchemaRef;
 use std::time::Duration;
+use std::sync::Arc;
 use anyhow::{Result, Context, anyhow};
-use futures::StreamExt;
 use tokio::time::timeout;
 
 /// Query execution result containing record batches
@@ -110,10 +109,8 @@ impl DataFusionQueryExecutor {
         let schema = if let Some(first_batch) = result.first() {
             first_batch.schema()
         } else {
-            // Empty result set - use schema from logical plan
-            let logical_plan = self.parse_sql(sql).await?;
-            let schema = logical_plan.schema();
-            Arc::new(schema.as_ref().clone().into())
+            // Empty result set - create empty schema
+            Arc::new(datafusion::arrow::datatypes::Schema::empty())
         };
 
         Ok(QueryExecutionResult::from_batches(

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use anyhow::{Result, Context, anyhow};
 use async_trait::async_trait;
 
-use crate::models::metadata::{DatabaseMetadata, TableMetadata, ColumnMetadata};
+use crate::models::metadata::{DatabaseMetadata, Table, Column};
 
 /// Manages catalog registration for DataFusion
 ///
@@ -78,7 +78,7 @@ impl DataFusionCatalogManager {
     async fn register_table_metadata(
         &mut self,
         catalog_name: &str,
-        table: &TableMetadata,
+        table: &Table,
     ) -> Result<()> {
         // Convert table metadata to Arrow schema
         let schema = self.metadata_to_arrow_schema(table)?;
@@ -92,7 +92,7 @@ impl DataFusionCatalogManager {
 
         // Register the table with the session context
         self.ctx.register_table(
-            &table.table_name,
+            &table.name,
             Arc::new(mem_table),
         )?;
 
@@ -100,7 +100,7 @@ impl DataFusionCatalogManager {
     }
 
     /// Convert table metadata to Arrow schema
-    fn metadata_to_arrow_schema(&self, table: &TableMetadata) -> Result<Schema> {
+    fn metadata_to_arrow_schema(&self, table: &Table) -> Result<Schema> {
         let fields: Vec<Field> = table
             .columns
             .iter()
@@ -111,11 +111,11 @@ impl DataFusionCatalogManager {
     }
 
     /// Convert column metadata to Arrow field
-    fn column_to_arrow_field(&self, column: &ColumnMetadata) -> Result<Field> {
+    fn column_to_arrow_field(&self, column: &Column) -> Result<Field> {
         let data_type = self.sql_type_to_arrow_type(&column.data_type)?;
 
         Ok(Field::new(
-            &column.column_name,
+            &column.name,
             data_type,
             column.is_nullable,
         ))
@@ -232,32 +232,41 @@ mod tests {
     use crate::models::metadata::*;
 
     fn create_test_metadata() -> DatabaseMetadata {
-        DatabaseMetadata {
-            database_name: "test_db".to_string(),
-            tables: vec![
-                TableMetadata {
-                    table_name: "users".to_string(),
-                    table_type: "BASE TABLE".to_string(),
+        DatabaseMetadata::new(
+            "test_connection".to_string(),
+            vec![
+                Table {
+                    name: "users".to_string(),
+                    schema: Some("public".to_string()),
                     columns: vec![
-                        ColumnMetadata {
-                            column_name: "id".to_string(),
+                        Column {
+                            name: "id".to_string(),
                             data_type: "integer".to_string(),
                             is_nullable: false,
-                            column_default: None,
                             is_primary_key: true,
+                            is_foreign_key: false,
+                            default_value: None,
+                            max_length: None,
+                            description: None,
                         },
-                        ColumnMetadata {
-                            column_name: "name".to_string(),
+                        Column {
+                            name: "name".to_string(),
                             data_type: "varchar".to_string(),
                             is_nullable: true,
-                            column_default: None,
                             is_primary_key: false,
+                            is_foreign_key: false,
+                            default_value: None,
+                            max_length: Some(255),
+                            description: None,
                         },
                     ],
+                    row_count: None,
+                    description: None,
                 },
             ],
-            views: vec![],
-        }
+            vec![],
+            vec!["public".to_string()],
+        )
     }
 
     #[tokio::test]
