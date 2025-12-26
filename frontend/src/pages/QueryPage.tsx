@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Space, message, Select, Typography, Row, Col, Tabs } from 'antd';
-import { PlayCircleOutlined, ClearOutlined } from '@ant-design/icons';
+import { Button, Space, message, Select, Typography, Row, Col, Tabs, Alert, Tag, Collapse } from 'antd';
+import { PlayCircleOutlined, ClearOutlined, ThunderboltOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { QueryEditor } from '../components/QueryEditor';
 import { QueryResults } from '../components/QueryResults';
 import { NaturalLanguageQuery } from '../components/NaturalLanguageQuery';
 import { queryService } from '../services/query';
+import { unifiedQueryService, DatabaseType } from '../services/unified_query';
+import type { UnifiedQueryResponse } from '../services/unified_query';
 import { QueryResult } from '../types';
 import { connectionService } from '../services/connection';
 import { DatabaseConnection } from '../types';
 
-const { Title } = Typography;
+const { Title, Text, Paragraph } = Typography;
+const { Panel } = Collapse;
 
 export const QueryPage: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -20,7 +23,35 @@ export const QueryPage: React.FC = () => {
   const [nlError, setNlError] = useState<string | undefined>();
   const [connections, setConnections] = useState<DatabaseConnection[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'sql' | 'nl'>('sql');
+  const [activeTab, setActiveTab] = useState<'sql' | 'nl' | 'unified'>('sql');
+
+  // Unified SQL states
+  const [useUnifiedQuery, setUseUnifiedQuery] = useState(false);
+  const [unifiedResponse, setUnifiedResponse] = useState<UnifiedQueryResponse | null>(null);
+  const [databaseType, setDatabaseType] = useState<DatabaseType | null>(null);
+
+  // Get selected connection
+  const selectedConnection = connections.find(c => c.id === selectedConnectionId);
+
+  // Auto-detect database type when connection changes
+  useEffect(() => {
+    if (selectedConnection) {
+      try {
+        const dbType = unifiedQueryService.getDatabaseType(selectedConnection.database_type);
+        setDatabaseType(dbType);
+
+        // Auto-enable unified query for supported databases
+        const isSupported = unifiedQueryService.isUnifiedQuerySupported(dbType);
+        if (isSupported && !useUnifiedQuery) {
+          setUseUnifiedQuery(true);
+        }
+      } catch (error) {
+        console.error('Failed to detect database type:', error);
+        setDatabaseType(null);
+        setUseUnifiedQuery(false);
+      }
+    }
+  }, [selectedConnection]);
 
   // Load connections on mount
   useEffect(() => {
@@ -52,20 +83,69 @@ export const QueryPage: React.FC = () => {
 
     setLoading(true);
     setQueryResult(null);
+    setUnifiedResponse(null);
 
     try {
-      const result = await queryService.executeQuery(selectedConnectionId, query);
-      setQueryResult(result.query);
-      
-      if (result.query.status === 'completed') {
-        message.success(`查询成功！返回 ${result.query.row_count || 0} 行数据`);
-      } else if (result.query.status === 'failed') {
-        message.error(`查询失败: ${result.query.error_message || '未知错误'}`);
+      // Use unified query if enabled and database type is detected
+      if (useUnifiedQuery && databaseType) {
+        const response = await unifiedQueryService.executeUnifiedQuery(selectedConnectionId, {
+          query,
+          database_type: databaseType,
+          timeout_secs: 30,
+          apply_limit: true,
+          limit_value: 1000,
+        });
+
+        setUnifiedResponse(response);
+
+        // Convert to QueryResult format for display
+        const queryResult: QueryResult = {
+          id: '',
+          connection_id: selectedConnectionId,
+          query_text: response.translated_query,
+          is_llm_generated: false,
+          status: 'completed',
+          results: response.results,
+          row_count: response.row_count,
+          execution_time_ms: response.execution_time_ms,
+          limit_applied: response.limit_applied,
+        };
+        setQueryResult(queryResult);
+
+        message.success(
+          <span>
+            查询成功！返回 {response.row_count} 行数据
+            {response.limit_applied && ' (已自动添加 LIMIT)'}
+            <br />
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              执行时间: {response.execution_time_ms}ms
+            </Text>
+          </span>
+        );
+      } else {
+        // Use legacy query execution
+        const result = await queryService.executeQuery(selectedConnectionId, query);
+        setQueryResult(result.query);
+
+        if (result.query.status === 'completed') {
+          message.success(`查询成功！返回 ${result.query.row_count || 0} 行数据`);
+        } else if (result.query.status === 'failed') {
+          message.error(`查询失败: ${result.query.error_message || '未知错误'}`);
+        }
       }
     } catch (error: any) {
       const errorMessage = error.response?.data?.error?.message || error.message || '查询执行失败';
-      message.error(`查询失败: ${errorMessage}`);
-      
+      message.error(
+        <span>
+          查询失败: {errorMessage}
+          {useUnifiedQuery && (
+            <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+              提示: 使用统一SQL语法时，请确保SQL符合DataFusion标准
+            </Text>
+          )}
+        </span>
+      );
+
       // Set error result
       setQueryResult({
         id: '',
@@ -86,6 +166,7 @@ export const QueryPage: React.FC = () => {
     setQueryResult(null);
     setGeneratedSql(undefined);
     setNlError(undefined);
+    setUnifiedResponse(null);
   };
 
   const handleNaturalLanguageQuery = async (question: string) => {
@@ -145,7 +226,7 @@ export const QueryPage: React.FC = () => {
           <Space direction="vertical" style={{ width: '100%' }} size="large">
             <div>
               <Title level={4}>数据库查询</Title>
-              <Space style={{ marginBottom: 16 }}>
+              <Space style={{ marginBottom: 16 }} wrap>
                 <Select
                   placeholder="选择数据库连接"
                   style={{ width: 300 }}
@@ -156,6 +237,29 @@ export const QueryPage: React.FC = () => {
                     value: conn.id,
                   }))}
                 />
+
+                {/* Database Type Indicator */}
+                {selectedConnection && databaseType && (
+                  <Tag
+                    icon={<InfoCircleOutlined />}
+                    color={unifiedQueryService.isUnifiedQuerySupported(databaseType) ? 'green' : 'default'}
+                  >
+                    {unifiedQueryService.getDatabaseTypeName(databaseType)}
+                    {unifiedQueryService.isUnifiedQuerySupported(databaseType) && ' (支持统一SQL)'}
+                  </Tag>
+                )}
+
+                {/* Unified SQL Toggle */}
+                {databaseType && unifiedQueryService.isUnifiedQuerySupported(databaseType) && (
+                  <Button
+                    type={useUnifiedQuery ? 'primary' : 'default'}
+                    icon={<ThunderboltOutlined />}
+                    onClick={() => setUseUnifiedQuery(!useUnifiedQuery)}
+                  >
+                    统一SQL语法
+                  </Button>
+                )}
+
                 <Button
                   icon={<ClearOutlined />}
                   onClick={handleClear}
@@ -163,6 +267,27 @@ export const QueryPage: React.FC = () => {
                   清空
                 </Button>
               </Space>
+
+              {/* Unified SQL Info Alert */}
+              {useUnifiedQuery && databaseType && (
+                <Alert
+                  message="使用统一SQL语法"
+                  description={
+                    <span>
+                      您的查询将使用DataFusion标准SQL语法，并自动翻译为{' '}
+                      {unifiedQueryService.getDatabaseTypeName(databaseType)} 方言执行。
+                      <br />
+                      <Text type="secondary" style={{ fontSize: '12px' }}>
+                        支持跨数据库通用的SQL语法，如 INTERVAL, CURRENT_DATE 等标准函数
+                      </Text>
+                    </span>
+                  }
+                  type="info"
+                  showIcon
+                  closable
+                  style={{ marginTop: 8 }}
+                />
+              )}
             </div>
 
             <Tabs
@@ -202,6 +327,72 @@ export const QueryPage: React.FC = () => {
                 },
               ]}
             />
+
+            {/* Dialect Translation Info */}
+            {unifiedResponse && (
+              <Collapse
+                items={[
+                  {
+                    key: 'translation',
+                    label: (
+                      <Space>
+                        <ThunderboltOutlined style={{ color: '#1890ff' }} />
+                        <Text strong>查看SQL方言翻译</Text>
+                        <Tag color="blue">
+                          {unifiedQueryService.getDatabaseTypeName(unifiedResponse.database_type)}
+                        </Tag>
+                      </Space>
+                    ),
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <div>
+                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                            原始DataFusion SQL:
+                          </Text>
+                          <Paragraph
+                            code
+                            copyable
+                            style={{
+                              background: '#f5f5f5',
+                              padding: '8px 12px',
+                              marginTop: '4px',
+                              marginBottom: '12px',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            {unifiedResponse.original_query}
+                          </Paragraph>
+                        </div>
+                        <div>
+                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                            翻译后的{unifiedQueryService.getDatabaseTypeName(unifiedResponse.database_type)}方言:
+                          </Text>
+                          <Paragraph
+                            code
+                            copyable
+                            style={{
+                              background: '#e6f7ff',
+                              padding: '8px 12px',
+                              marginTop: '4px',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            {unifiedResponse.translated_query}
+                          </Paragraph>
+                        </div>
+                        <div>
+                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                            执行时间: {unifiedResponse.execution_time_ms}ms
+                            {unifiedResponse.limit_applied && ' | 已自动添加 LIMIT'}
+                          </Text>
+                        </div>
+                      </Space>
+                    ),
+                  },
+                ]}
+                style={{ marginBottom: 16 }}
+              />
+            )}
 
             <QueryResults queryResult={queryResult} loading={loading || nlLoading} />
           </Space>

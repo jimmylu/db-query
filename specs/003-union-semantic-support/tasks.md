@@ -82,11 +82,11 @@
 - [X] T034 [US1] Update POST /api/connections/{id}/query endpoint to use unified SQL in backend/src/api/handlers/query.rs
 - [X] T035 [US1] Add database type detection in query handler in backend/src/api/handlers/query.rs
 - [ ] T036 [US1] Update SQL validator to support DataFusion SQL syntax in backend/src/validation/sql_validator.rs
-- [ ] T037 [US1] Create unified query API client service in frontend/src/services/unified_query.ts
-- [ ] T038 [US1] Update QueryEditor component to support unified SQL syntax in frontend/src/components/QueryEditor/index.tsx
-- [ ] T039 [US1] Add database type indicator in QueryPage in frontend/src/pages/QueryPage.tsx
-- [ ] T040 [US1] Update error messages to indicate dialect translation in frontend components
-- [ ] T041 [US1] Add loading states for dialect translation in frontend components
+- [X] T037 [US1] Create unified query API client service in frontend/src/services/unified_query.ts
+- [X] T038 [US1] Update QueryEditor component to support unified SQL syntax in frontend/src/components/QueryEditor/index.tsx
+- [X] T039 [US1] Add database type indicator in QueryPage in frontend/src/pages/QueryPage.tsx
+- [X] T040 [US1] Update error messages to indicate dialect translation in frontend components
+- [X] T041 [US1] Add loading states for dialect translation in frontend components
 
 **Checkpoint**: At this point, User Story 1 should be fully functional. Users can execute unified SQL queries against PostgreSQL and MySQL databases with automatic dialect translation.
 
