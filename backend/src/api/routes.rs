@@ -52,6 +52,10 @@ pub fn create_router_with_state(storage: Arc<SqliteStorage>, config: Config) -> 
             "/api/connections/{id}/nl-query",
             post(query::execute_natural_language_query),
         )
+        .route(
+            "/api/connections/{id}/unified-query",
+            post(query::execute_unified_query),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

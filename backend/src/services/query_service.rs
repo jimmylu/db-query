@@ -1,15 +1,99 @@
-use crate::models::Query;
+use crate::models::{Query, UnifiedQueryRequest, UnifiedQueryResponse, DatabaseType};
 use crate::api::middleware::AppError;
 use crate::validation::SqlValidator;
 use crate::services::database::DatabaseAdapter;
+use crate::services::datafusion::{
+    DialectTranslationService,
+    DatabaseType as DFDatabaseType,
+};
 use tokio_postgres::Client;
 use std::time::Instant;
 
-pub struct QueryService;
+pub struct QueryService {
+    dialect_translator: DialectTranslationService,
+}
 
 impl QueryService {
     pub fn new() -> Self {
-        Self
+        Self {
+            dialect_translator: DialectTranslationService::with_cache(),
+        }
+    }
+
+    /// Execute a unified SQL query using DataFusion semantic layer
+    ///
+    /// This method accepts DataFusion SQL syntax and automatically translates
+    /// it to the target database's dialect before execution.
+    ///
+    /// # Arguments
+    /// * `request` - Unified query request with DataFusion SQL
+    /// * `adapter` - Database adapter for the target database
+    ///
+    /// # Returns
+    /// UnifiedQueryResponse with original query, translated query, and results
+    pub async fn execute_unified_query(
+        &self,
+        request: UnifiedQueryRequest,
+        adapter: Box<dyn DatabaseAdapter>,
+    ) -> Result<UnifiedQueryResponse, AppError> {
+        let start_time = Instant::now();
+
+        // Validate SQL (SELECT-only check)
+        SqlValidator::validate_select_only(&request.query)
+            .map_err(|e| AppError::InvalidSql(e.to_string()))?;
+
+        // Apply LIMIT if needed
+        let datafusion_sql = if request.apply_limit {
+            SqlValidator::ensure_limit(&request.query, request.limit_value as u64)
+                .map_err(|e| AppError::InvalidSql(e.to_string()))?
+        } else {
+            request.query.clone()
+        };
+
+        // Convert DatabaseType to DFDatabaseType
+        let df_db_type = Self::convert_database_type(request.database_type)?;
+
+        // Translate to target dialect
+        let translated_sql = self.dialect_translator
+            .translate_query(&datafusion_sql, df_db_type)
+            .await
+            .map_err(|e| AppError::Database(format!("Dialect translation failed: {}", e)))?;
+
+        tracing::info!(
+            "Translated query from DataFusion to {}: {} -> {}",
+            adapter.dialect_name(),
+            datafusion_sql,
+            translated_sql
+        );
+
+        // Execute the translated query
+        let query_result = adapter
+            .execute_query(&translated_sql, request.timeout_secs)
+            .await?;
+
+        let execution_time_ms = start_time.elapsed().as_millis();
+
+        // Build response
+        let response = UnifiedQueryResponse::new(
+            datafusion_sql,
+            translated_sql,
+            request.database_type,
+            query_result.rows,
+            execution_time_ms,
+            request.apply_limit,
+        );
+
+        Ok(response)
+    }
+
+    /// Convert DatabaseType to DataFusion DatabaseType
+    fn convert_database_type(db_type: DatabaseType) -> Result<DFDatabaseType, AppError> {
+        match db_type {
+            DatabaseType::PostgreSQL => Ok(DFDatabaseType::PostgreSQL),
+            DatabaseType::MySQL => Ok(DFDatabaseType::MySQL),
+            DatabaseType::Doris => Ok(DFDatabaseType::Doris),
+            DatabaseType::Druid => Ok(DFDatabaseType::Druid),
+        }
     }
 
     /// Execute a SQL query using a database adapter (with connection pooling)

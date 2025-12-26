@@ -77,10 +77,10 @@
 - [X] T029 [US1] Create dialect translation service in backend/src/services/datafusion/translator.rs
 - [X] T030 [US1] Implement PostgreSQL dialect translation logic in backend/src/services/datafusion/translator.rs
 - [X] T031 [US1] Implement MySQL dialect translation logic in backend/src/services/datafusion/translator.rs
-- [ ] T032 [US1] Update QueryService to use DataFusion executor in backend/src/services/query_service.rs
-- [ ] T033 [US1] Integrate dialect translation into query execution flow in backend/src/services/query_service.rs
-- [ ] T034 [US1] Update POST /api/connections/{id}/query endpoint to use unified SQL in backend/src/api/handlers/query.rs
-- [ ] T035 [US1] Add database type detection in query handler in backend/src/api/handlers/query.rs
+- [X] T032 [US1] Update QueryService to use DataFusion executor in backend/src/services/query_service.rs
+- [X] T033 [US1] Integrate dialect translation into query execution flow in backend/src/services/query_service.rs
+- [X] T034 [US1] Update POST /api/connections/{id}/query endpoint to use unified SQL in backend/src/api/handlers/query.rs
+- [X] T035 [US1] Add database type detection in query handler in backend/src/api/handlers/query.rs
 - [ ] T036 [US1] Update SQL validator to support DataFusion SQL syntax in backend/src/validation/sql_validator.rs
 - [ ] T037 [US1] Create unified query API client service in frontend/src/services/unified_query.ts
 - [ ] T038 [US1] Update QueryEditor component to support unified SQL syntax in frontend/src/components/QueryEditor/index.tsx
