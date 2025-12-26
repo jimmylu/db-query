@@ -1,0 +1,322 @@
+// PostgreSQL adapter using connection pooling for optimal resource management
+use crate::models::{DatabaseConnection, DatabaseMetadata, Table, View, Column};
+use crate::api::middleware::AppError;
+use crate::services::database::adapter::{DatabaseAdapter, QueryResult};
+use deadpool_postgres::Pool;
+use url::Url;
+use serde_json::{json, Value};
+use std::time::Instant;
+
+pub struct PostgreSQLAdapter {
+    pool: Pool,
+    connection_url: String,
+}
+
+impl PostgreSQLAdapter {
+    pub fn new(pool: Pool, connection_url: &str) -> Result<Self, AppError> {
+        // Validate PostgreSQL URL format
+        let url = Url::parse(connection_url)
+            .map_err(|e| AppError::Validation(format!("Invalid PostgreSQL URL: {}", e)))?;
+
+        if url.scheme() != "postgresql" && url.scheme() != "postgres" {
+            return Err(AppError::Validation("URL must use postgresql:// or postgres:// scheme".to_string()));
+        }
+
+        Ok(Self {
+            pool,
+            connection_url: connection_url.to_string(),
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl DatabaseAdapter for PostgreSQLAdapter {
+    async fn connect_and_get_metadata(
+        &self,
+        connection_id: String,
+    ) -> Result<(DatabaseConnection, DatabaseMetadata), AppError> {
+        // Get a connection from the pool
+        let client = self.pool.get().await
+            .map_err(|e| AppError::Connection(format!("Failed to get connection from pool: {}", e)))?;
+
+        // Create connection object
+        let mut db_connection = DatabaseConnection::new(
+            None,
+            self.connection_url.clone(),
+            "postgresql".to_string(),
+        );
+        db_connection.id = connection_id.clone();
+        db_connection.mark_connected();
+
+        // Retrieve metadata using pooled connection (dereference to get &Client)
+        let metadata = Self::retrieve_metadata(&*client, &connection_id).await?;
+
+        Ok((db_connection, metadata))
+    }
+
+    async fn execute_query(
+        &self,
+        sql: &str,
+        timeout_secs: u64,
+    ) -> Result<QueryResult, AppError> {
+        // Get a connection from the pool
+        let client = self.pool.get().await
+            .map_err(|e| AppError::Connection(format!("Failed to get connection from pool: {}", e)))?;
+
+        let start_time = Instant::now();
+
+        let query_future = client.query(sql, &[]);
+
+        let rows = tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            query_future,
+        )
+        .await
+        .map_err(|_| AppError::Database(format!("Query timeout after {} seconds", timeout_secs)))?
+        .map_err(|e| {
+            let error_details = if let Some(db_error) = e.as_db_error() {
+                format!(
+                    "Code: {}, Message: {}",
+                    db_error.code().code(),
+                    db_error.message()
+                )
+            } else {
+                format!("{}", e)
+            };
+            AppError::Database(format!("Query execution failed: {}", error_details))
+        })?;
+
+        // Convert rows to JSON
+        let mut json_rows = Vec::new();
+        for row in rows {
+            let mut row_obj = serde_json::Map::new();
+            for (idx, column) in row.columns().iter().enumerate() {
+                let column_name = column.name();
+                let value: Value = match *column.type_() {
+                    tokio_postgres::types::Type::INT2 |
+                    tokio_postgres::types::Type::INT4 |
+                    tokio_postgres::types::Type::INT8 => {
+                        row.get::<_, Option<i64>>(idx)
+                            .map(|v| json!(v))
+                            .unwrap_or(Value::Null)
+                    }
+                    tokio_postgres::types::Type::FLOAT4 |
+                    tokio_postgres::types::Type::FLOAT8 => {
+                        row.get::<_, Option<f64>>(idx)
+                            .map(|v| json!(v))
+                            .unwrap_or(Value::Null)
+                    }
+                    tokio_postgres::types::Type::BOOL => {
+                        row.get::<_, Option<bool>>(idx)
+                            .map(|v| json!(v))
+                            .unwrap_or(Value::Null)
+                    }
+                    _ => {
+                        // For all other types (TEXT, VARCHAR, TIMESTAMP, UUID, JSON, etc.)
+                        // try to get as string representation
+                        match row.try_get::<_, Option<String>>(idx) {
+                            Ok(Some(v)) => json!(v),
+                            Ok(None) => Value::Null,
+                            Err(_) => {
+                                // For types that can't be converted to string,
+                                // show the type name as placeholder
+                                json!(format!("<{}>", column.type_().name()))
+                            }
+                        }
+                    }
+                };
+                row_obj.insert(column_name.to_string(), value);
+            }
+            json_rows.push(Value::Object(row_obj));
+        }
+
+        let row_count = json_rows.len();
+        let execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+        Ok(QueryResult {
+            rows: json_rows,
+            row_count,
+            execution_time_ms,
+        })
+    }
+
+    fn database_type(&self) -> &str {
+        "postgresql"
+    }
+
+    async fn test_connection(&self) -> Result<(), AppError> {
+        // Get a connection from the pool to test
+        let _client = self.pool.get().await
+            .map_err(|e| AppError::Connection(format!("Connection test failed: {}", e)))?;
+        Ok(())
+    }
+}
+
+impl PostgreSQLAdapter {
+    async fn retrieve_metadata(
+        client: &tokio_postgres::Client,
+        connection_id: &str,
+    ) -> Result<DatabaseMetadata, AppError> {
+        // Get schemas
+        let schemas = Self::get_schemas(client).await?;
+
+        // Get tables
+        let tables = Self::get_tables(client).await?;
+
+        // Get views
+        let views = Self::get_views(client).await?;
+
+        Ok(DatabaseMetadata::new(
+            connection_id.to_string(),
+            tables,
+            views,
+            schemas,
+        ))
+    }
+
+    async fn get_schemas(client: &tokio_postgres::Client) -> Result<Vec<String>, AppError> {
+        let rows = client
+            .query(
+                "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast') ORDER BY schema_name",
+                &[],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get schemas: {}", e)))?;
+
+        Ok(rows
+            .iter()
+            .map(|row| row.get::<_, String>(0))
+            .collect())
+    }
+
+    async fn get_tables(client: &tokio_postgres::Client) -> Result<Vec<Table>, AppError> {
+        let rows = client
+            .query(
+                r#"
+                SELECT 
+                    table_schema,
+                    table_name,
+                    table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                ORDER BY table_schema, table_name
+                "#,
+                &[],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get tables: {}", e)))?;
+
+        let mut tables = Vec::new();
+        for row in rows {
+            let schema = row.get::<_, String>(0);
+            let name = row.get::<_, String>(1);
+            let table_type = row.get::<_, String>(2);
+
+            if table_type == "BASE TABLE" {
+                let columns = Self::get_table_columns(client, &schema, &name).await?;
+            tables.push(Table {
+                name,
+                schema: Some(schema),
+                columns,
+                row_count: None,
+                description: None,
+            });
+            }
+        }
+
+        Ok(tables)
+    }
+
+    async fn get_views(client: &tokio_postgres::Client) -> Result<Vec<View>, AppError> {
+        let rows = client
+            .query(
+                r#"
+                SELECT 
+                    table_schema,
+                    table_name
+                FROM information_schema.views
+                WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                ORDER BY table_schema, table_name
+                "#,
+                &[],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get views: {}", e)))?;
+
+        let mut views = Vec::new();
+        for row in rows {
+            let schema = row.get::<_, String>(0);
+            let name = row.get::<_, String>(1);
+            let columns = Self::get_table_columns(client, &schema, &name).await?;
+            views.push(View {
+                name,
+                schema: Some(schema),
+                columns,
+                definition: None,
+                description: None,
+            });
+        }
+
+        Ok(views)
+    }
+
+    async fn get_table_columns(
+        client: &tokio_postgres::Client,
+        schema: &str,
+        table_name: &str,
+    ) -> Result<Vec<Column>, AppError> {
+        let rows = client
+            .query(
+                r#"
+                SELECT 
+                    column_name,
+                    data_type,
+                    is_nullable,
+                    column_default,
+                    CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END as is_primary_key,
+                    CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END as is_foreign_key
+                FROM information_schema.columns c
+                LEFT JOIN (
+                    SELECT ku.column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage ku
+                        ON tc.constraint_name = ku.constraint_name
+                        AND tc.table_schema = ku.table_schema
+                    WHERE tc.constraint_type = 'PRIMARY KEY'
+                        AND tc.table_schema = $1
+                        AND tc.table_name = $2
+                ) pk ON c.column_name = pk.column_name
+                LEFT JOIN (
+                    SELECT ku.column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage ku
+                        ON tc.constraint_name = ku.constraint_name
+                        AND tc.table_schema = ku.table_schema
+                    WHERE tc.constraint_type = 'FOREIGN KEY'
+                        AND tc.table_schema = $1
+                        AND tc.table_name = $2
+                ) fk ON c.column_name = fk.column_name
+                WHERE c.table_schema = $1 AND c.table_name = $2
+                ORDER BY c.ordinal_position
+                "#,
+                &[&schema, &table_name],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get columns: {}", e)))?;
+
+        Ok(rows
+            .iter()
+            .map(|row| Column {
+                name: row.get(0),
+                data_type: row.get(1),
+                is_nullable: row.get::<_, String>(2) == "YES",
+                default_value: row.get::<_, Option<String>>(3),
+                is_primary_key: row.get(4),
+                is_foreign_key: row.get(5),
+                max_length: None,
+                description: None,
+            })
+            .collect())
+    }
+}
+

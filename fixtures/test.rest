@@ -1,0 +1,535 @@
+### Database Query Tool API Tests
+### VS Code REST Client Extension
+### Base URL: http://localhost:3000/api
+
+@baseUrl = http://localhost:3000/api
+@connectionId = your-connection-id-here
+@mysqlConnectionId = your-mysql-connection-id-here
+
+### Variables
+### Update these variables with your actual values
+@testConnectionUrl = postgresql://user:password@localhost:5432/testdb
+@testConnectionName = Test Database
+@mysqlTestConnectionUrl = mysql://root:password@localhost:3306/testdb
+@mysqlTestConnectionName = MySQL Test Database
+
+###############################################
+# Connections API
+###############################################
+
+### List all connections
+GET {{baseUrl}}/connections
+Content-Type: application/json
+
+###
+
+### Create a new database connection
+POST {{baseUrl}}/connections
+Content-Type: application/json
+
+{
+  "name": "{{testConnectionName}}",
+  "connection_url": "{{testConnectionUrl}}",
+  "database_type": "postgresql"
+}
+
+###
+
+### Create connection without name (optional field)
+POST {{baseUrl}}/connections
+Content-Type: application/json
+
+{
+  "connection_url": "{{testConnectionUrl}}",
+  "database_type": "postgresql"
+}
+
+###
+
+### Get connection details
+GET {{baseUrl}}/connections/{{connectionId}}
+Content-Type: application/json
+
+###
+
+### Delete a connection
+DELETE {{baseUrl}}/connections/{{connectionId}}
+Content-Type: application/json
+
+###
+
+###############################################
+# Metadata API
+###############################################
+
+### Get metadata (cached)
+GET {{baseUrl}}/connections/{{connectionId}}/metadata
+Content-Type: application/json
+
+###
+
+### Get metadata (force refresh)
+GET {{baseUrl}}/connections/{{connectionId}}/metadata?refresh=true
+Content-Type: application/json
+
+###
+
+### Get metadata (use cache)
+GET {{baseUrl}}/connections/{{connectionId}}/metadata?refresh=false
+Content-Type: application/json
+
+###
+
+###############################################
+# Query API
+###############################################
+
+### Execute a simple SELECT query
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM users LIMIT 10"
+}
+
+###
+
+### Execute query with specific columns
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT id, name, email FROM users WHERE active = true LIMIT 100"
+}
+
+###
+
+### Execute query without LIMIT (should auto-append LIMIT 1000)
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM users"
+}
+
+###
+
+### Execute query with WHERE clause
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM orders WHERE created_at > '2024-01-01' LIMIT 50"
+}
+
+###
+
+### Execute query with JOIN
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id LIMIT 20"
+}
+
+###
+
+### Execute query with aggregation
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT category, COUNT(*) as count FROM products GROUP BY category LIMIT 10"
+}
+
+###
+
+### Test invalid SQL syntax (should return 400)
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM users WHERE invalid syntax"
+}
+
+###
+
+### Test non-SELECT statement (should return 400)
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "INSERT INTO users (name) VALUES ('test')"
+}
+
+###
+
+### Test UPDATE statement (should return 400)
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "UPDATE users SET name = 'test' WHERE id = 1"
+}
+
+###
+
+### Test DELETE statement (should return 400)
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "DELETE FROM users WHERE id = 1"
+}
+
+###
+
+### Test DROP statement (should return 400)
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "DROP TABLE users"
+}
+
+###
+
+###############################################
+# Natural Language Query API
+###############################################
+
+### Natural language query - simple
+POST {{baseUrl}}/connections/{{connectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "Show me all users"
+}
+
+###
+
+### Natural language query - with filter
+POST {{baseUrl}}/connections/{{connectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "Show me all users who registered in the last month"
+}
+
+###
+
+### Natural language query - with aggregation
+POST {{baseUrl}}/connections/{{connectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "How many orders were placed in each month?"
+}
+
+###
+
+### Natural language query - with join
+POST {{baseUrl}}/connections/{{connectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "Show me all users with their order totals"
+}
+
+###
+
+### Natural language query - complex
+POST {{baseUrl}}/connections/{{connectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "Find the top 10 customers by total order value who have placed orders in the last 3 months"
+}
+
+###
+
+### Natural language query - with date range
+POST {{baseUrl}}/connections/{{connectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "Show me all products that were added between January and March 2024"
+}
+
+###
+
+###############################################
+# Error Scenarios
+###############################################
+
+### Get non-existent connection (should return 404)
+GET {{baseUrl}}/connections/non-existent-id
+Content-Type: application/json
+
+###
+
+### Get metadata for non-existent connection (should return 404)
+GET {{baseUrl}}/connections/non-existent-id/metadata
+Content-Type: application/json
+
+###
+
+### Query non-existent connection (should return 404)
+POST {{baseUrl}}/connections/non-existent-id/query
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM users LIMIT 10"
+}
+
+###
+
+### Create connection with invalid URL (should return 400)
+POST {{baseUrl}}/connections
+Content-Type: application/json
+
+{
+  "connection_url": "invalid-url",
+  "database_type": "postgresql"
+}
+
+###
+
+### Create connection with missing required field (should return 400)
+POST {{baseUrl}}/connections
+Content-Type: application/json
+
+{
+  "name": "Test Connection"
+}
+
+###
+
+### Query with empty query string (should return 400)
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": ""
+}
+
+###
+
+### Natural language query with empty question (should return 400)
+POST {{baseUrl}}/connections/{{connectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": ""
+}
+
+###
+
+###############################################
+# Complete Workflow Example
+###############################################
+
+### Step 1: Create a connection
+# @name createConnection
+POST {{baseUrl}}/connections
+Content-Type: application/json
+
+{
+  "name": "Production Database",
+  "connection_url": "postgresql://user:password@localhost:5432/production",
+  "database_type": "postgresql"
+}
+
+### Step 2: Extract connection ID from response
+# After running Step 1, copy the connection ID from the response
+# and update the @connectionId variable above
+
+### Step 3: Get metadata
+GET {{baseUrl}}/connections/{{connectionId}}/metadata
+Content-Type: application/json
+
+### Step 4: Query the database
+POST {{baseUrl}}/connections/{{connectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' LIMIT 10"
+}
+
+### Step 5: Natural language query
+POST {{baseUrl}}/connections/{{connectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "What tables are in this database?"
+}
+
+### Step 6: Clean up - Delete connection
+DELETE {{baseUrl}}/connections/{{connectionId}}
+Content-Type: application/json
+
+###
+
+###############################################
+# MySQL-Specific Examples
+###############################################
+
+### Create a MySQL connection
+# @name createMySQLConnection
+POST {{baseUrl}}/connections
+Content-Type: application/json
+
+{
+  "name": "{{mysqlTestConnectionName}}",
+  "connection_url": "{{mysqlTestConnectionUrl}}",
+  "database_type": "mysql"
+}
+
+###
+
+### Create MySQL connection without name
+POST {{baseUrl}}/connections
+Content-Type: application/json
+
+{
+  "connection_url": "{{mysqlTestConnectionUrl}}",
+  "database_type": "mysql"
+}
+
+###
+
+### Get MySQL metadata
+GET {{baseUrl}}/connections/{{mysqlConnectionId}}/metadata
+Content-Type: application/json
+
+###
+
+### MySQL Query - Simple SELECT
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM users LIMIT 10"
+}
+
+###
+
+### MySQL Query - With backtick identifiers
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT `id`, `name`, `email` FROM `users` WHERE `active` = 1 LIMIT 100"
+}
+
+###
+
+### MySQL Query - Date functions
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM orders WHERE created_at > DATE_SUB(NOW(), INTERVAL 7 DAY) LIMIT 50"
+}
+
+###
+
+### MySQL Query - String concatenation with CONCAT
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT CONCAT(first_name, ' ', last_name) as full_name FROM users LIMIT 20"
+}
+
+###
+
+### MySQL Query - Current date
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM events WHERE event_date = CURDATE() LIMIT 10"
+}
+
+###
+
+### MySQL Natural Language Query - Simple
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "Show me all users"
+}
+
+###
+
+### MySQL Natural Language Query - Date range
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "Show me orders from the last 30 days"
+}
+
+###
+
+### MySQL Natural Language Query - Aggregation
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "How many users registered each month?"
+}
+
+###
+
+### MySQL Natural Language Query - Chinese
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "显示所有用户的数量"
+}
+
+###
+
+###############################################
+# MySQL Complete Workflow
+###############################################
+
+### MySQL Workflow Step 1: Create connection
+# @name createMySQLWorkflowConnection
+POST {{baseUrl}}/connections
+Content-Type: application/json
+
+{
+  "name": "MySQL Production",
+  "connection_url": "mysql://root:password@localhost:3306/production",
+  "database_type": "mysql"
+}
+
+### MySQL Workflow Step 2: Get metadata
+GET {{baseUrl}}/connections/{{mysqlConnectionId}}/metadata
+Content-Type: application/json
+
+### MySQL Workflow Step 3: List all tables
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/query
+Content-Type: application/json
+
+{
+  "query": "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' LIMIT 100"
+}
+
+### MySQL Workflow Step 4: Natural language query
+POST {{baseUrl}}/connections/{{mysqlConnectionId}}/nl-query
+Content-Type: application/json
+
+{
+  "question": "What are the table names in this database?"
+}
+
+### MySQL Workflow Step 5: Clean up
+DELETE {{baseUrl}}/connections/{{mysqlConnectionId}}
+Content-Type: application/json
+

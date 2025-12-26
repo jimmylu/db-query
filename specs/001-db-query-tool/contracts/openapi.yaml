@@ -1,0 +1,477 @@
+openapi: 3.0.3
+info:
+  title: Database Query Tool API
+  description: RESTful API for database connection, metadata retrieval, and query execution
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+  - url: https://api.example.com/api
+    description: Production server
+
+tags:
+  - name: connections
+    description: Database connection management
+  - name: metadata
+    description: Database metadata operations
+  - name: queries
+    description: SQL query execution
+  - name: natural-language
+    description: Natural language to SQL conversion
+
+paths:
+  /connections:
+    get:
+      tags:
+        - connections
+      summary: List all database connections
+      description: Retrieve all stored database connections
+      operationId: listConnections
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Connection'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - connections
+      summary: Create a new database connection
+      description: Establish connection to a database and retrieve metadata
+      operationId: createConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConnectionRequest'
+      responses:
+        '201':
+          description: Connection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /connections/{connectionId}:
+    get:
+      tags:
+        - connections
+      summary: Get connection details
+      description: Retrieve details of a specific database connection
+      operationId: getConnection
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - connections
+      summary: Delete a database connection
+      description: Remove a database connection and its cached metadata
+      operationId: deleteConnection
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '204':
+          description: Connection deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /connections/{connectionId}/metadata:
+    get:
+      tags:
+        - metadata
+      summary: Get database metadata
+      description: Retrieve cached metadata (tables, views, schemas) for a connection
+      operationId: getMetadata
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - name: refresh
+          in: query
+          description: Force refresh metadata from database
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetadataResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /connections/{connectionId}/query:
+    post:
+      tags:
+        - queries
+      summary: Execute a SQL query
+      description: Validate and execute a SELECT query against the connected database
+      operationId: executeQuery
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+        '400':
+          description: Invalid query or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /connections/{connectionId}/nl-query:
+    post:
+      tags:
+        - natural-language
+      summary: Execute a natural language query
+      description: Convert natural language question to SQL and execute it
+      operationId: executeNaturalLanguageQuery
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NaturalLanguageQueryRequest'
+      responses:
+        '200':
+          description: Query generated and executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+        '400':
+          description: Invalid query or LLM generation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    ConnectionId:
+      name: connectionId
+      in: path
+      required: true
+      description: Unique identifier of the database connection
+      schema:
+        type: string
+
+  schemas:
+    Connection:
+      type: object
+      required:
+        - id
+        - connection_url
+        - database_type
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the connection
+        name:
+          type: string
+          description: User-friendly name for the connection
+        connection_url:
+          type: string
+          description: Database connection URL
+        database_type:
+          type: string
+          enum:
+            - postgresql
+            - mysql
+          description: Type of database
+        status:
+          type: string
+          enum:
+            - connected
+            - disconnected
+            - error
+          description: Current connection status
+        created_at:
+          type: string
+          format: date-time
+          description: When the connection was created
+        last_connected_at:
+          type: string
+          format: date-time
+          description: Last successful connection time
+        metadata_cache_id:
+          type: string
+          description: Reference to cached metadata
+
+    CreateConnectionRequest:
+      type: object
+      required:
+        - connection_url
+      properties:
+        name:
+          type: string
+          description: User-friendly name for the connection
+        connection_url:
+          type: string
+          description: Database connection URL (e.g., postgresql://user:pass@host:5432/dbname)
+        database_type:
+          type: string
+          enum:
+            - postgresql
+            - mysql
+          default: postgresql
+          description: Type of database
+
+    ConnectionResponse:
+      type: object
+      properties:
+        connection:
+          $ref: '#/components/schemas/Connection'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+
+    Metadata:
+      type: object
+      properties:
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/Table'
+        views:
+          type: array
+          items:
+            $ref: '#/components/schemas/View'
+        schemas:
+          type: array
+          items:
+            type: string
+        retrieved_at:
+          type: string
+          format: date-time
+
+    Table:
+      type: object
+      required:
+        - name
+        - columns
+      properties:
+        name:
+          type: string
+        schema:
+          type: string
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/Column'
+        row_count:
+          type: integer
+        description:
+          type: string
+
+    View:
+      type: object
+      required:
+        - name
+        - columns
+      properties:
+        name:
+          type: string
+        schema:
+          type: string
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/Column'
+        definition:
+          type: string
+        description:
+          type: string
+
+    Column:
+      type: object
+      required:
+        - name
+        - data_type
+      properties:
+        name:
+          type: string
+        data_type:
+          type: string
+        is_nullable:
+          type: boolean
+        is_primary_key:
+          type: boolean
+        is_foreign_key:
+          type: boolean
+        default_value:
+          type: string
+        max_length:
+          type: integer
+        description:
+          type: string
+
+    MetadataResponse:
+      type: object
+      properties:
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        cached:
+          type: boolean
+          description: Whether metadata was retrieved from cache
+
+    QueryRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: SQL SELECT query to execute
+          example: SELECT * FROM users LIMIT 10
+
+    NaturalLanguageQueryRequest:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          description: Natural language question about the data
+          example: "Show me all users who registered in the last month"
+
+    QueryResponse:
+      type: object
+      required:
+        - query_id
+        - status
+        - results
+      properties:
+        query_id:
+          type: string
+          description: Unique identifier for this query execution
+        query_text:
+          type: string
+          description: The SQL query that was executed
+        is_llm_generated:
+          type: boolean
+          description: Whether query was generated by LLM
+        status:
+          type: string
+          enum:
+            - completed
+            - failed
+          description: Query execution status
+        results:
+          type: array
+          description: Query results as array of row objects
+          items:
+            type: object
+            additionalProperties: true
+            description: Each row as a JSON object with column names as keys
+        row_count:
+          type: integer
+          description: Number of rows returned
+        execution_time_ms:
+          type: integer
+          description: Query execution time in milliseconds
+        limit_applied:
+          type: boolean
+          description: Whether LIMIT 1000 was auto-appended
+        error_message:
+          type: string
+          description: Error message if execution failed
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Error code (e.g., INVALID_SQL, CONNECTION_ERROR)
+            message:
+              type: string
+              description: Human-readable error message
+            details:
+              type: string
+              description: Additional error details
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+

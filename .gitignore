@@ -1,0 +1,73 @@
+# Rust
+target/
+debug/
+release/
+*.rs.bk
+*.rlib
+*.prof*
+Cargo.lock
+
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm
+.eslintcache
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.*.backup
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+metadata.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Coverage
+coverage/
+*.lcov
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Build artifacts
+*.wasm
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Package manager locks (keep Cargo.lock for Rust, ignore others)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+.claude/reviews/

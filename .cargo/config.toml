@@ -1,0 +1,17 @@
+# Cargo configuration for better network handling
+[net]
+# Increase timeout for slow networks
+retry = 3
+git-fetch-with-cli = true
+
+# Use git CLI for git dependencies (more reliable)
+# Note: Cargo will use all available CPU cores by default
+
+# Registry configuration (optional - uncomment if you want to use a mirror)
+# If you experience network timeout issues, uncomment the following lines:
+# [source.crates-io]
+# replace-with = "rustcc"
+# 
+# [source.rustcc]
+# registry = "https://crates.rustcc.cn"
+

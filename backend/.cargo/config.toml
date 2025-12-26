@@ -1,0 +1,8 @@
+# Cargo configuration for backend project
+# This file inherits from parent .cargo/config.toml
+# Add project-specific settings here if needed
+
+[net]
+retry = 3
+git-fetch-with-cli = true
+
