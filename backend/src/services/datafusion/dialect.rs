@@ -4,7 +4,6 @@
 // to database-specific SQL dialects (PostgreSQL, MySQL, etc.)
 
 use anyhow::{Result, Context, anyhow};
-use sqlparser::ast::Statement;
 use sqlparser::dialect::{PostgreSqlDialect, MySqlDialect, GenericDialect};
 use sqlparser::parser::Parser;
 use async_trait::async_trait;

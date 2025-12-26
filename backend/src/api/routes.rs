@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post, delete},
+    routing::{get, post},
     Router,
 };
 use tower_http::cors::CorsLayer;

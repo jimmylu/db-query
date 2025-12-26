@@ -159,18 +159,17 @@ impl DatabaseAdapter for PostgreSQLAdapter {
     ) -> Result<(datafusion::arrow::datatypes::SchemaRef, Vec<datafusion::arrow::record_batch::RecordBatch>), AppError> {
         use crate::services::datafusion::{
             DataFusionSessionManager, SessionConfig,
-            DataFusionQueryExecutor,
             DialectTranslationService, DatabaseType as DFDatabaseType,
         };
         use std::time::Duration;
 
         // Create DataFusion session
         let session_manager = DataFusionSessionManager::new(SessionConfig::default());
-        let session = session_manager.create_session()
+        let _session = session_manager.create_session()
             .map_err(|e| AppError::Database(format!("Failed to create DataFusion session: {}", e)))?;
 
         // Create translator service
-        let mut translator_service = DialectTranslationService::new();
+        let translator_service = DialectTranslationService::new();
 
         // Translate DataFusion SQL to PostgreSQL dialect
         let translated_sql = translator_service
@@ -179,7 +178,6 @@ impl DatabaseAdapter for PostgreSQLAdapter {
             .map_err(|e| AppError::Database(format!("Failed to translate SQL: {}", e)))?;
 
         // Execute the translated query against PostgreSQL
-        let start_time = std::time::Instant::now();
         let client = self.pool.get().await
             .map_err(|e| AppError::Connection(format!("Failed to get connection from pool: {}", e)))?;
 
@@ -223,7 +221,7 @@ impl DatabaseAdapter for PostgreSQLAdapter {
         let schema = Arc::new(Schema::new(fields));
 
         // Convert rows to Arrow arrays
-        let mut array_builders: Vec<Box<dyn ArrayBuilder>> = schema.fields().iter().map(|field| {
+        let mut _array_builders: Vec<Box<dyn ArrayBuilder>> = schema.fields().iter().map(|field| {
             match field.data_type() {
                 DataType::Int16 => Box::new(Int16Builder::new()) as Box<dyn ArrayBuilder>,
                 DataType::Int32 => Box::new(Int32Builder::new()) as Box<dyn ArrayBuilder>,

@@ -4,7 +4,6 @@ use crate::api::middleware::AppError;
 use serde_json::Value;
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::arrow::record_batch::RecordBatch;
-use std::sync::Arc;
 
 /// Database connection information
 #[derive(Debug, Clone)]

@@ -3,15 +3,13 @@
 // Manages the registration of database tables as DataFusion catalogs.
 // Enables querying multiple databases through a unified interface.
 
-use datafusion::catalog::{CatalogProvider, SchemaProvider, TableProvider};
+use datafusion::catalog::CatalogProvider;
 use datafusion::prelude::*;
 use datafusion::datasource::MemTable;
-use datafusion::arrow::datatypes::{Schema, SchemaRef, Field, DataType};
-use datafusion::arrow::array::RecordBatch;
+use datafusion::arrow::datatypes::{Schema, Field, DataType};
 use std::sync::Arc;
 use std::collections::HashMap;
 use anyhow::{Result, Context, anyhow};
-use async_trait::async_trait;
 
 use crate::models::metadata::{DatabaseMetadata, Table, Column};
 
@@ -77,7 +75,7 @@ impl DataFusionCatalogManager {
     /// Register a single table from metadata
     async fn register_table_metadata(
         &mut self,
-        catalog_name: &str,
+        _catalog_name: &str,
         table: &Table,
     ) -> Result<()> {
         // Convert table metadata to Arrow schema

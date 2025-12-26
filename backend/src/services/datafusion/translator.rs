@@ -6,7 +6,6 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use anyhow::{Result, anyhow, Context};
-use async_trait::async_trait;
 
 use super::dialect::{DialectTranslator, PostgreSQLDialectTranslator, MySQLDialectTranslator, GenericDialectTranslator};
 
