@@ -218,7 +218,7 @@ mod tests {
         );
 
         assert_eq!(req.timeout_secs, 30);
-        assert_eq!(req.apply_limit, true);
+        assert!(req.apply_limit);
         assert_eq!(req.limit_value, 1000);
     }
 
@@ -232,7 +232,7 @@ mod tests {
         .with_limit(false, 0);
 
         assert_eq!(req.timeout_secs, 60);
-        assert_eq!(req.apply_limit, false);
+        assert!(!req.apply_limit);
         assert_eq!(req.limit_value, 0);
     }
 
@@ -249,7 +249,7 @@ mod tests {
 
         assert_eq!(response.row_count, 1);
         assert_eq!(response.execution_time_ms, 150);
-        assert_eq!(response.limit_applied, true);
+        assert!(response.limit_applied);
         assert_eq!(response.database_type, DatabaseType::PostgreSQL);
     }
 }

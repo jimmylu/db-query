@@ -72,10 +72,10 @@ impl LlmService {
                     if !column.is_nullable {
                         context.push_str(" [NOT NULL]");
                     }
-                    context.push_str("\n");
+                    context.push('\n');
                 }
             }
-            context.push_str("\n");
+            context.push('\n');
         }
         
         // Add views
