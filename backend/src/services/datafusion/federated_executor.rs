@@ -85,10 +85,13 @@ impl DataFusionFederatedExecutor {
                 }
             }
             MergeStrategy::InnerJoin { ref conditions } => {
-                self.merge_with_join(&sub_results, conditions, plan.apply_limit, plan.limit_value).await?
+                self.merge_with_join(&sub_results, conditions, "INNER", plan.apply_limit, plan.limit_value).await?
             }
             MergeStrategy::LeftJoin { ref conditions } => {
-                self.merge_with_join(&sub_results, conditions, plan.apply_limit, plan.limit_value).await?
+                self.merge_with_join(&sub_results, conditions, "LEFT", plan.apply_limit, plan.limit_value).await?
+            }
+            MergeStrategy::RightJoin { ref conditions } => {
+                self.merge_with_join(&sub_results, conditions, "RIGHT", plan.apply_limit, plan.limit_value).await?
             }
             MergeStrategy::Union { all } => {
                 self.merge_with_union(&sub_results, all, plan.apply_limit, plan.limit_value).await?
@@ -164,10 +167,12 @@ impl DataFusionFederatedExecutor {
     }
 
     /// Merge results using JOIN
+    /// ENHANCEMENT: Now supports INNER, LEFT, and RIGHT JOIN types
     async fn merge_with_join(
         &self,
         sub_results: &[SubQueryResult],
         conditions: &[crate::models::cross_database_query::JoinCondition],
+        join_type: &str,  // "INNER", "LEFT", or "RIGHT"
         apply_limit: bool,
         limit_value: u32,
     ) -> Result<Vec<serde_json::Value>, AppError> {
@@ -182,8 +187,8 @@ impl DataFusionFederatedExecutor {
         // Register each sub-result as a temporary table
         for (idx, result) in sub_results.iter().enumerate() {
             if result.rows.is_empty() {
-                tracing::warn!("Sub-query {} returned no rows, JOIN may return empty result", idx);
-                continue;
+                tracing::warn!("Sub-query {} returned no rows, {} JOIN may return empty/partial result", idx, join_type);
+                // For LEFT/RIGHT JOIN, empty tables are valid
             }
 
             let batch = self.json_to_record_batch(&result.rows)?;
@@ -192,20 +197,20 @@ impl DataFusionFederatedExecutor {
             ctx.register_batch(&table_name, batch)
                 .map_err(|e| AppError::Database(format!("Failed to register table {}: {}", table_name, e)))?;
 
-            tracing::debug!("Registered table_{} with {} rows", idx, result.rows.len());
+            tracing::debug!("Registered table_{} with {} rows for {} JOIN", idx, result.rows.len(), join_type);
         }
 
-        // Build JOIN SQL
+        // Build JOIN SQL with specified join type
         let join_sql = if !conditions.is_empty() {
             // Use explicit JOIN conditions
-            self.build_join_sql(conditions, sub_results.len())
+            self.build_join_sql_with_type(conditions, sub_results.len(), join_type)
         } else {
             // Fallback: simple Cartesian product for testing
             tracing::warn!("No JOIN conditions provided, using Cartesian product");
             self.build_cartesian_product_sql(sub_results.len())
         };
 
-        tracing::info!("Executing JOIN SQL: {}", join_sql);
+        tracing::info!("Executing {} JOIN SQL: {}", join_type, join_sql);
 
         // Execute JOIN query using DataFusion
         let df = ctx.sql(&join_sql).await
@@ -235,20 +240,65 @@ impl DataFusionFederatedExecutor {
         Ok(results)
     }
 
-    /// Build JOIN SQL from JOIN conditions
+    /// Build JOIN SQL from JOIN conditions (INNER JOIN only)
+    /// DEPRECATED: Use build_join_sql_with_type instead
     fn build_join_sql(&self, conditions: &[crate::models::cross_database_query::JoinCondition], table_count: usize) -> String {
+        self.build_join_sql_with_type(conditions, table_count, "INNER")
+    }
+
+    /// Build JOIN SQL from JOIN conditions with specific join type
+    /// ENHANCEMENT: Now supports multi-table JOINs, multiple conditions, and different JOIN types
+    fn build_join_sql_with_type(
+        &self,
+        conditions: &[crate::models::cross_database_query::JoinCondition],
+        table_count: usize,
+        join_type: &str,  // "INNER", "LEFT", or "RIGHT"
+    ) -> String {
         if conditions.is_empty() || table_count < 2 {
             return "SELECT * FROM table_0".to_string();
         }
 
-        // For now, support simple 2-table JOIN
-        // TODO: Support multi-table JOINs with multiple conditions
-        let first_cond = &conditions[0];
+        // Build JOIN SQL for multiple tables
+        let mut sql = String::from("SELECT * FROM table_0");
 
-        format!(
-            "SELECT * FROM table_0 INNER JOIN table_1 ON table_0.{} = table_1.{}",
-            first_cond.left_column, first_cond.right_column
-        )
+        // Group conditions by table pairs
+        // For now, assume sequential joins: table_0 JOIN table_1 JOIN table_2...
+        for table_idx in 1..table_count {
+            let table_name = format!("table_{}", table_idx);
+
+            // Find conditions involving this table
+            let relevant_conditions: Vec<_> = conditions
+                .iter()
+                .filter(|cond| {
+                    // Match conditions where either side references this table
+                    cond.left_alias.contains(&format!("table_{}", table_idx)) ||
+                    cond.right_alias.contains(&format!("table_{}", table_idx))
+                })
+                .collect();
+
+            if relevant_conditions.is_empty() {
+                // No explicit condition - use Cartesian product (cross join)
+                sql.push_str(&format!(" CROSS JOIN {}", table_name));
+                tracing::warn!("No JOIN condition for {}, using CROSS JOIN", table_name);
+            } else {
+                // Build ON clause with multiple conditions
+                sql.push_str(&format!(" {} JOIN {} ON ", join_type, table_name));
+
+                let conditions_sql: Vec<String> = relevant_conditions
+                    .iter()
+                    .map(|cond| {
+                        format!("{}.{} = {}.{}",
+                            cond.left_alias, cond.left_column,
+                            cond.right_alias, cond.right_column)
+                    })
+                    .collect();
+
+                sql.push_str(&conditions_sql.join(" AND "));
+            }
+        }
+
+        tracing::debug!("Built multi-table {} JOIN SQL: {}", join_type, sql);
+        sql
     }
 
     /// Build Cartesian product SQL (fallback when no conditions)

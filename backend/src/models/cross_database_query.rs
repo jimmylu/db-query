@@ -176,8 +176,13 @@ pub enum MergeStrategy {
         conditions: Vec<JoinCondition>,
     },
 
-    /// Left JOIN
+    /// Left JOIN (LEFT OUTER JOIN)
     LeftJoin {
+        conditions: Vec<JoinCondition>,
+    },
+
+    /// Right JOIN (RIGHT OUTER JOIN)
+    RightJoin {
         conditions: Vec<JoinCondition>,
     },
 

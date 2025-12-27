@@ -479,6 +479,7 @@ impl CrossDatabaseQueryPlanner {
     /// Extract JOIN conditions from SELECT statement
     ///
     /// Parses JOIN ON clauses and converts them to JoinCondition structures
+    /// ENHANCEMENT: Now supports multiple AND conditions in JOIN ON clauses
     fn extract_join_conditions(
         &self,
         select: &sqlparser::ast::Select,
@@ -503,12 +504,10 @@ impl CrossDatabaseQueryPlanner {
             for join in &table_with_joins.joins {
                 // Extract join conditions based on join constraint
                 match &join.join_operator {
-                    JoinOperator::Inner(constraint) | JoinOperator::LeftOuter(constraint) => {
+                    JoinOperator::Inner(constraint) | JoinOperator::LeftOuter(constraint) | JoinOperator::RightOuter(constraint) => {
                         if let JoinConstraint::On(expr) = constraint {
-                            // Parse the ON expression to extract conditions
-                            if let Some(join_cond) = self.parse_join_expr(expr, &table_aliases)? {
-                                conditions.push(join_cond);
-                            }
+                            // Parse the ON expression to extract ALL conditions (including AND chains)
+                            self.parse_all_join_conditions(expr, &table_aliases, &mut conditions)?;
                         }
                     }
                     _ => {
@@ -518,12 +517,14 @@ impl CrossDatabaseQueryPlanner {
             }
         }
 
+        tracing::debug!("Extracted {} JOIN conditions", conditions.len());
         Ok(conditions)
     }
 
     /// Parse a JOIN expression to extract join conditions
     ///
     /// Handles expressions like: table1.col1 = table2.col2
+    /// Also supports multiple conditions: table1.col1 = table2.col2 AND table1.col3 = table2.col4
     fn parse_join_expr(
         &self,
         expr: &sqlparser::ast::Expr,
@@ -550,9 +551,9 @@ impl CrossDatabaseQueryPlanner {
                 }
 
                 // Handle AND conditions: recursively extract both sides
+                // ENHANCEMENT: Now returns the first valid condition found
+                // Multiple conditions are extracted in extract_join_conditions
                 if matches!(op, BinaryOperator::And) {
-                    // For now, just return the first condition
-                    // TODO: Support multiple AND conditions
                     return self.parse_join_expr(left, table_aliases);
                 }
             }
@@ -562,6 +563,44 @@ impl CrossDatabaseQueryPlanner {
         }
 
         Ok(None)
+    }
+
+    /// Parse all JOIN conditions from an expression (including AND chains)
+    ///
+    /// Extracts all equality conditions connected by AND
+    fn parse_all_join_conditions(
+        &self,
+        expr: &sqlparser::ast::Expr,
+        table_aliases: &HashMap<String, String>,
+        conditions: &mut Vec<JoinCondition>,
+    ) -> Result<(), AppError> {
+        use sqlparser::ast::{BinaryOperator, Expr};
+
+        match expr {
+            Expr::BinaryOp { left, op, right } => {
+                if matches!(op, BinaryOperator::And) {
+                    // Recursively process both sides of AND
+                    self.parse_all_join_conditions(left, table_aliases, conditions)?;
+                    self.parse_all_join_conditions(right, table_aliases, conditions)?;
+                } else if matches!(op, BinaryOperator::Eq) {
+                    // Extract equality condition
+                    if let (Some((left_table, left_col)), Some((right_table, right_col))) = (
+                        self.extract_table_column(left, table_aliases)?,
+                        self.extract_table_column(right, table_aliases)?,
+                    ) {
+                        conditions.push(JoinCondition {
+                            left_alias: left_table,
+                            left_column: left_col,
+                            right_alias: right_table,
+                            right_column: right_col,
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 
     /// Extract table and column names from an expression
