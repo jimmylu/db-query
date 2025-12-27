@@ -366,11 +366,11 @@ impl PostgreSQLAdapter {
         let rows = client
             .query(
                 r#"
-                SELECT 
-                    column_name,
-                    data_type,
-                    is_nullable,
-                    column_default,
+                SELECT
+                    c.column_name,
+                    c.data_type,
+                    c.is_nullable,
+                    c.column_default,
                     CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END as is_primary_key,
                     CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END as is_foreign_key
                 FROM information_schema.columns c
@@ -404,15 +404,21 @@ impl PostgreSQLAdapter {
 
         Ok(rows
             .iter()
-            .map(|row| Column {
-                name: row.get(0),
-                data_type: row.get(1),
-                is_nullable: row.get::<_, String>(2) == "YES",
-                default_value: row.get::<_, Option<String>>(3),
-                is_primary_key: row.get(4),
-                is_foreign_key: row.get(5),
-                max_length: None,
-                description: None,
+            .map(|row| {
+                // Safely extract boolean values with proper type handling
+                let is_pk: bool = row.try_get(4).unwrap_or(false);
+                let is_fk: bool = row.try_get(5).unwrap_or(false);
+
+                Column {
+                    name: row.get(0),
+                    data_type: row.get(1),
+                    is_nullable: row.get::<_, String>(2) == "YES",
+                    default_value: row.get::<_, Option<String>>(3),
+                    is_primary_key: is_pk,
+                    is_foreign_key: is_fk,
+                    max_length: None,
+                    description: None,
+                }
             })
             .collect())
     }
