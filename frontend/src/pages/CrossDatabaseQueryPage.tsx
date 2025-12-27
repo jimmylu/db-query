@@ -202,7 +202,7 @@ export const CrossDatabaseQueryPage: React.FC = () => {
   const sampleQueries = crossDatabaseQueryService.getSampleQueries();
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '24px', background: '#f0f2f5' }}>
       <Row gutter={[24, 24]}>
         <Col xs={24}>
           <Space direction="vertical" style={{ width: '100%' }} size="large">

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { Refine } from '@refinedev/core';
 import { RefineKbar, RefineKbarProvider } from '@refinedev/kbar';
 import {
@@ -51,7 +51,9 @@ function App() {
                     Title={({ collapsed }) => (
                       <ThemedTitleV2 collapsed={collapsed} text="DB Query Tool" />
                     )}
-                  />
+                  >
+                    <Outlet />
+                  </ThemedLayoutV2>
                 }
               >
                 <Route index element={<Dashboard />} />
