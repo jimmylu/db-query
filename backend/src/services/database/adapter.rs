@@ -13,7 +13,7 @@ pub struct DatabaseConnectionInfo {
 }
 
 /// Query execution result
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QueryResult {
     pub rows: Vec<Value>,
     pub row_count: usize,
