@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import { Card, Button, Space, Tooltip, Slider } from 'antd';
-import { CodeOutlined, ExpandOutlined, CompressOutlined, FontSizeOutlined } from '@ant-design/icons';
+import { Card, Button, Space, Tooltip, Slider, message } from 'antd';
+import { CodeOutlined, ExpandOutlined, CompressOutlined, FontSizeOutlined, FormatPainterOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
+import { formatAndUppercaseSQL } from '../../utils/sqlFormatter';
 
 interface QueryEditorProps {
   value: string;
@@ -18,6 +19,11 @@ export const QueryEditor: React.FC<QueryEditorProps> = ({
   const [height, setHeight] = useState<string>(initialHeight);
   const [fontSize, setFontSize] = useState<number>(14);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    // Load from localStorage or default to true (dark mode)
+    const saved = localStorage.getItem('editor-theme');
+    return saved ? saved === 'dark' : true;
+  });
 
   // Available height presets
   const heightPresets = {
@@ -87,6 +93,27 @@ export const QueryEditor: React.FC<QueryEditorProps> = ({
     setIsExpanded(false);
   };
 
+  const handleFormat = () => {
+    if (!value || !value.trim()) {
+      message.warning('请先输入SQL查询');
+      return;
+    }
+
+    try {
+      const formatted = formatAndUppercaseSQL(value);
+      onChange(formatted);
+      message.success('SQL格式化成功');
+    } catch (error: any) {
+      message.error(`格式化失败: ${error.message}`);
+    }
+  };
+
+  const toggleTheme = () => {
+    const newTheme = !isDarkMode;
+    setIsDarkMode(newTheme);
+    localStorage.setItem('editor-theme', newTheme ? 'dark' : 'light');
+  };
+
   return (
     <Card
       title={
@@ -97,6 +124,17 @@ export const QueryEditor: React.FC<QueryEditorProps> = ({
       }
       extra={
         <Space size="small">
+          {/* Format SQL */}
+          <Tooltip title="格式化SQL">
+            <Button
+              size="small"
+              icon={<FormatPainterOutlined />}
+              onClick={handleFormat}
+            >
+              格式化
+            </Button>
+          </Tooltip>
+
           {/* Font size control */}
           <Tooltip title="字体大小">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
@@ -148,6 +186,15 @@ export const QueryEditor: React.FC<QueryEditorProps> = ({
               onClick={toggleExpand}
             />
           </Tooltip>
+
+          {/* Theme toggle */}
+          <Tooltip title={isDarkMode ? '切换到亮色模式' : '切换到暗色模式'}>
+            <Button
+              size="small"
+              icon={isDarkMode ? <BulbFilled /> : <BulbOutlined />}
+              onClick={toggleTheme}
+            />
+          </Tooltip>
         </Space>
       }
       style={{ marginBottom: 16 }}
@@ -158,7 +205,7 @@ export const QueryEditor: React.FC<QueryEditorProps> = ({
         value={value}
         onChange={(val) => onChange(val || '')}
         onMount={handleEditorDidMount}
-        theme="vs-dark"
+        theme={isDarkMode ? 'vs-dark' : 'vs-light'}
         options={{
           minimap: { enabled: false },
           fontSize,

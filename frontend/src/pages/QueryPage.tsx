@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Space, message, Select, Typography, Row, Col, Tabs, Alert, Tag, Collapse, Drawer, List, Tooltip, Empty } from 'antd';
-import { PlayCircleOutlined, ClearOutlined, ThunderboltOutlined, InfoCircleOutlined, HistoryOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Button, Space, message, Select, Typography, Row, Col, Tabs, Alert, Tag, Collapse, Drawer, List, Tooltip, Empty, Input, Modal, Form } from 'antd';
+import { PlayCircleOutlined, ClearOutlined, ThunderboltOutlined, InfoCircleOutlined, HistoryOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined, FileTextOutlined, SaveOutlined, FolderOutlined } from '@ant-design/icons';
 import { QueryEditor } from '../components/QueryEditor';
 import { QueryResults } from '../components/QueryResults';
 import { NaturalLanguageQuery } from '../components/NaturalLanguageQuery';
@@ -11,6 +11,7 @@ import { QueryResult } from '../types';
 import { connectionService } from '../services/connection';
 import { DatabaseConnection } from '../types';
 import { QueryHistoryManager, QueryHistoryItem } from '../utils/queryHistory';
+import { QueryTemplateManager, QueryTemplate } from '../utils/queryTemplates';
 
 const { Title, Text, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -35,8 +36,22 @@ export const QueryPage: React.FC = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
 
+  // Query templates states
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [queryTemplates, setQueryTemplates] = useState<QueryTemplate[]>([]);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [saveTemplateForm] = Form.useForm();
+
   // Get selected connection
   const selectedConnection = connections.find(c => c.id === selectedConnectionId);
+
+  // Load templates when drawer opens
+  useEffect(() => {
+    if (showTemplates) {
+      const templates = QueryTemplateManager.getTemplates();
+      setQueryTemplates(templates);
+    }
+  }, [showTemplates]);
 
   // Auto-detect database type when connection changes
   useEffect(() => {
@@ -121,6 +136,56 @@ export const QueryPage: React.FC = () => {
     QueryHistoryManager.clearHistory();
     loadQueryHistory();
     message.success('已清空历史记录');
+  };
+
+  // Template handlers
+  const handleLoadTemplate = (template: QueryTemplate) => {
+    setQuery(template.query);
+    setShowTemplates(false);
+    setActiveTab('sql');
+    QueryTemplateManager.recordUsage(template.id);
+    message.success(`已加载模板: ${template.name}`);
+  };
+
+  const handleSaveTemplate = () => {
+    if (!query.trim()) {
+      message.warning('请先输入SQL查询');
+      return;
+    }
+    setShowSaveTemplate(true);
+  };
+
+  const handleSaveTemplateSubmit = async () => {
+    try {
+      const values = await saveTemplateForm.validateFields();
+      QueryTemplateManager.addTemplate({
+        name: values.name,
+        description: values.description,
+        query: query,
+        category: values.category || '自定义',
+      });
+      message.success('模板保存成功');
+      setShowSaveTemplate(false);
+      saveTemplateForm.resetFields();
+      // Refresh templates if drawer is open
+      if (showTemplates) {
+        const templates = QueryTemplateManager.getTemplates();
+        setQueryTemplates(templates);
+      }
+    } catch (error: any) {
+      message.error(`保存失败: ${error.message}`);
+    }
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    try {
+      QueryTemplateManager.deleteTemplate(id);
+      const templates = QueryTemplateManager.getTemplates();
+      setQueryTemplates(templates);
+      message.success('模板删除成功');
+    } catch (error: any) {
+      message.error(`删除失败: ${error.message}`);
+    }
   };
 
   const handleExecute = async () => {
@@ -346,6 +411,21 @@ export const QueryPage: React.FC = () => {
                   onClick={() => setShowHistory(true)}
                 >
                   查询历史
+                </Button>
+
+                <Button
+                  icon={<FileTextOutlined />}
+                  onClick={() => setShowTemplates(true)}
+                >
+                  查询模板
+                </Button>
+
+                <Button
+                  icon={<SaveOutlined />}
+                  onClick={handleSaveTemplate}
+                  disabled={!query.trim()}
+                >
+                  保存为模板
                 </Button>
 
                 <Button
@@ -588,6 +668,178 @@ export const QueryPage: React.FC = () => {
           />
         )}
       </Drawer>
+
+      {/* Templates Drawer */}
+      <Drawer
+        title={
+          <Space>
+            <FileTextOutlined />
+            <span>查询模板</span>
+            <Tag color="blue">{queryTemplates.length} 个模板</Tag>
+          </Space>
+        }
+        placement="right"
+        width={700}
+        onClose={() => setShowTemplates(false)}
+        open={showTemplates}
+      >
+        {queryTemplates.length === 0 ? (
+          <Empty description="暂无查询模板" />
+        ) : (
+          <Collapse
+            defaultActiveKey={QueryTemplateManager.getCategories()}
+            items={QueryTemplateManager.getCategories().map((category) => ({
+              key: category,
+              label: (
+                <Space>
+                  <FolderOutlined />
+                  <Text strong>{category}</Text>
+                  <Tag color="cyan">
+                    {QueryTemplateManager.getTemplatesByCategory(category).length}
+                  </Tag>
+                </Space>
+              ),
+              children: (
+                <List
+                  dataSource={QueryTemplateManager.getTemplatesByCategory(category)}
+                  renderItem={(template) => (
+                    <List.Item
+                      actions={[
+                        <Tooltip title="使用此模板">
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => handleLoadTemplate(template)}
+                          >
+                            使用
+                          </Button>
+                        </Tooltip>,
+                        template.id.startsWith('user-') && (
+                          <Tooltip title="删除">
+                            <Button
+                              type="link"
+                              danger
+                              size="small"
+                              icon={<DeleteOutlined />}
+                              onClick={() => handleDeleteTemplate(template.id)}
+                            />
+                          </Tooltip>
+                        ),
+                      ].filter(Boolean)}
+                    >
+                      <List.Item.Meta
+                        title={
+                          <Space direction="vertical" style={{ width: '100%' }} size={0}>
+                            <Text strong>{template.name}</Text>
+                            {template.description && (
+                              <Text type="secondary" style={{ fontSize: '12px' }}>
+                                {template.description}
+                              </Text>
+                            )}
+                          </Space>
+                        }
+                        description={
+                          <div>
+                            <Paragraph
+                              code
+                              style={{
+                                fontSize: '12px',
+                                marginTop: 8,
+                                marginBottom: 0,
+                                maxHeight: '100px',
+                                overflow: 'auto',
+                                backgroundColor: '#f5f5f5',
+                                padding: '8px',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              {template.query}
+                            </Paragraph>
+                            <Space size={4} style={{ marginTop: 8 }} wrap>
+                              {template.useCount > 0 && (
+                                <Tag color="green" style={{ fontSize: '11px' }}>
+                                  使用 {template.useCount} 次
+                                </Tag>
+                              )}
+                              {template.lastUsed && (
+                                <Tag style={{ fontSize: '11px' }}>
+                                  上次使用: {new Date(template.lastUsed).toLocaleDateString('zh-CN')}
+                                </Tag>
+                              )}
+                            </Space>
+                          </div>
+                        }
+                      />
+                    </List.Item>
+                  )}
+                />
+              ),
+            }))}
+          />
+        )}
+      </Drawer>
+
+      {/* Save Template Modal */}
+      <Modal
+        title="保存为查询模板"
+        open={showSaveTemplate}
+        onOk={handleSaveTemplateSubmit}
+        onCancel={() => {
+          setShowSaveTemplate(false);
+          saveTemplateForm.resetFields();
+        }}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Form
+          form={saveTemplateForm}
+          layout="vertical"
+          initialValues={{ category: '自定义' }}
+        >
+          <Form.Item
+            name="name"
+            label="模板名称"
+            rules={[{ required: true, message: '请输入模板名称' }]}
+          >
+            <Input placeholder="例如: 用户活跃度统计" />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label="模板描述"
+          >
+            <Input.TextArea
+              placeholder="简要描述此查询的用途"
+              rows={2}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="category"
+            label="分类"
+          >
+            <Select
+              placeholder="选择分类"
+              options={[
+                { label: '自定义', value: '自定义' },
+                { label: '基础查询', value: '基础查询' },
+                { label: '聚合查询', value: '聚合查询' },
+                { label: '连接查询', value: '连接查询' },
+                { label: '条件查询', value: '条件查询' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item label="SQL 查询预览">
+            <Input.TextArea
+              value={query}
+              readOnly
+              rows={6}
+              style={{ fontFamily: 'monospace', fontSize: '12px' }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };
