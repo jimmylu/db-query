@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Space, message, Select, Typography, Row, Col, Tabs, Alert, Tag, Collapse } from 'antd';
-import { PlayCircleOutlined, ClearOutlined, ThunderboltOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Button, Space, message, Select, Typography, Row, Col, Tabs, Alert, Tag, Collapse, Drawer, List, Tooltip, Empty } from 'antd';
+import { PlayCircleOutlined, ClearOutlined, ThunderboltOutlined, InfoCircleOutlined, HistoryOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import { QueryEditor } from '../components/QueryEditor';
 import { QueryResults } from '../components/QueryResults';
 import { NaturalLanguageQuery } from '../components/NaturalLanguageQuery';
@@ -10,6 +10,7 @@ import type { UnifiedQueryResponse } from '../services/unified_query';
 import { QueryResult } from '../types';
 import { connectionService } from '../services/connection';
 import { DatabaseConnection } from '../types';
+import { QueryHistoryManager, QueryHistoryItem } from '../utils/queryHistory';
 
 const { Title, Text, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -29,6 +30,10 @@ export const QueryPage: React.FC = () => {
   const [useUnifiedQuery, setUseUnifiedQuery] = useState(false);
   const [unifiedResponse, setUnifiedResponse] = useState<UnifiedQueryResponse | null>(null);
   const [databaseType, setDatabaseType] = useState<DatabaseType | null>(null);
+
+  // Query history states
+  const [showHistory, setShowHistory] = useState(false);
+  const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
 
   // Get selected connection
   const selectedConnection = connections.find(c => c.id === selectedConnectionId);
@@ -56,7 +61,30 @@ export const QueryPage: React.FC = () => {
   // Load connections on mount
   useEffect(() => {
     loadConnections();
+    loadQueryHistory();
   }, []);
+
+  // Reload history when showing the drawer
+  useEffect(() => {
+    if (showHistory) {
+      loadQueryHistory();
+    }
+  }, [showHistory]);
+
+  // Keyboard shortcut: Cmd/Ctrl + Enter to execute query
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (activeTab === 'sql' && selectedConnectionId && query.trim() && !loading) {
+          handleExecute();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, selectedConnectionId, query, loading]);
 
   const loadConnections = async () => {
     try {
@@ -68,6 +96,31 @@ export const QueryPage: React.FC = () => {
     } catch (error: any) {
       console.error('Failed to load connections:', error);
     }
+  };
+
+  const loadQueryHistory = () => {
+    const history = QueryHistoryManager.getRecentQueries(20);
+    setQueryHistory(history);
+  };
+
+  const handleLoadHistoryQuery = (historyItem: QueryHistoryItem) => {
+    setQuery(historyItem.query);
+    setSelectedConnectionId(historyItem.connectionId);
+    setShowHistory(false);
+    setActiveTab('sql');
+    message.success('已加载历史查询');
+  };
+
+  const handleDeleteHistoryItem = (id: string) => {
+    QueryHistoryManager.deleteQuery(id);
+    loadQueryHistory();
+    message.success('已删除历史记录');
+  };
+
+  const handleClearHistory = () => {
+    QueryHistoryManager.clearHistory();
+    loadQueryHistory();
+    message.success('已清空历史记录');
   };
 
   const handleExecute = async () => {
@@ -112,6 +165,16 @@ export const QueryPage: React.FC = () => {
         };
         setQueryResult(queryResult);
 
+        // Save to history
+        QueryHistoryManager.addQuery({
+          query,
+          connectionId: selectedConnectionId,
+          connectionName: selectedConnection?.name || selectedConnection?.connection_url || '',
+          success: true,
+          rowCount: response.row_count,
+          executionTimeMs: response.execution_time_ms,
+        });
+
         message.success(
           <span>
             查询成功！返回 {response.row_count} 行数据
@@ -128,8 +191,26 @@ export const QueryPage: React.FC = () => {
         setQueryResult(result.query);
 
         if (result.query.status === 'completed') {
+          // Save to history
+          QueryHistoryManager.addQuery({
+            query,
+            connectionId: selectedConnectionId,
+            connectionName: selectedConnection?.name || selectedConnection?.connection_url || '',
+            success: true,
+            rowCount: result.query.row_count,
+            executionTimeMs: result.query.execution_time_ms,
+          });
+
           message.success(`查询成功！返回 ${result.query.row_count || 0} 行数据`);
         } else if (result.query.status === 'failed') {
+          // Save failed query to history
+          QueryHistoryManager.addQuery({
+            query,
+            connectionId: selectedConnectionId,
+            connectionName: selectedConnection?.name || selectedConnection?.connection_url || '',
+            success: false,
+          });
+
           message.error(`查询失败: ${result.query.error_message || '未知错误'}`);
         }
       }
@@ -261,6 +342,13 @@ export const QueryPage: React.FC = () => {
                 )}
 
                 <Button
+                  icon={<HistoryOutlined />}
+                  onClick={() => setShowHistory(true)}
+                >
+                  查询历史
+                </Button>
+
+                <Button
                   icon={<ClearOutlined />}
                   onClick={handleClear}
                 >
@@ -308,7 +396,7 @@ export const QueryPage: React.FC = () => {
                         disabled={!selectedConnectionId || !query.trim()}
                         block
                       >
-                        执行查询
+                        执行查询 (⌘/Ctrl + Enter)
                       </Button>
                     </Space>
                   ),
@@ -398,6 +486,108 @@ export const QueryPage: React.FC = () => {
           </Space>
         </Col>
       </Row>
+
+      {/* Query History Drawer */}
+      <Drawer
+        title={
+          <Space>
+            <HistoryOutlined />
+            <span>查询历史</span>
+            <Tag color="blue">{queryHistory.length} 条记录</Tag>
+          </Space>
+        }
+        placement="right"
+        width={600}
+        onClose={() => setShowHistory(false)}
+        open={showHistory}
+        extra={
+          <Button
+            danger
+            size="small"
+            onClick={handleClearHistory}
+            disabled={queryHistory.length === 0}
+          >
+            清空全部
+          </Button>
+        }
+      >
+        {queryHistory.length === 0 ? (
+          <Empty description="暂无查询历史" />
+        ) : (
+          <List
+            dataSource={queryHistory}
+            renderItem={(item) => (
+              <List.Item
+                actions={[
+                  <Tooltip title="加载此查询">
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => handleLoadHistoryQuery(item)}
+                    >
+                      加载
+                    </Button>
+                  </Tooltip>,
+                  <Tooltip title="删除">
+                    <Button
+                      type="link"
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleDeleteHistoryItem(item.id)}
+                    />
+                  </Tooltip>,
+                ]}
+              >
+                <List.Item.Meta
+                  avatar={
+                    item.success ? (
+                      <CheckCircleOutlined style={{ fontSize: 20, color: '#52c41a' }} />
+                    ) : (
+                      <CloseCircleOutlined style={{ fontSize: 20, color: '#ff4d4f' }} />
+                    )
+                  }
+                  title={
+                    <Space direction="vertical" style={{ width: '100%' }} size={0}>
+                      <Text
+                        ellipsis
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: '13px',
+                          display: 'block',
+                          maxWidth: '400px',
+                        }}
+                      >
+                        {item.query}
+                      </Text>
+                      <Space size={8} wrap>
+                        <Tag color="blue" style={{ fontSize: '11px' }}>
+                          {item.connectionName}
+                        </Tag>
+                        {item.success && item.rowCount !== undefined && (
+                          <Tag color="green" style={{ fontSize: '11px' }}>
+                            {item.rowCount} 行
+                          </Tag>
+                        )}
+                        {item.success && item.executionTimeMs !== undefined && (
+                          <Tag color="cyan" style={{ fontSize: '11px' }}>
+                            {item.executionTimeMs}ms
+                          </Tag>
+                        )}
+                      </Space>
+                    </Space>
+                  }
+                  description={
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                      <ClockCircleOutlined /> {new Date(item.timestamp).toLocaleString('zh-CN')}
+                    </Text>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        )}
+      </Drawer>
     </div>
   );
 };

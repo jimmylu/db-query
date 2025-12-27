@@ -24,48 +24,42 @@ function App() {
           <Refine
             dataProvider={dataProvider}
             notificationProvider={useNotificationProvider}
-                    resources={[
-                      {
-                        name: 'connections',
-                        list: '/',
-                      },
-                      {
-                        name: 'queries',
-                        list: '/queries',
-                      },
-                      {
-                        name: 'cross-database',
-                        list: '/cross-database',
-                      },
-                    ]}
+            resources={[
+              {
+                name: 'connections',
+                list: '/',
+              },
+              {
+                name: 'queries',
+                list: '/queries',
+              },
+              {
+                name: 'cross-database',
+                list: '/cross-database',
+              },
+            ]}
             options={{
               syncWithLocation: true,
               warnWhenUnsavedChanges: true,
             }}
           >
-                    <Routes>
-                      <Route
-                        element={
-                          <ThemedLayoutV2
-                            Sider={() => <ThemedSiderV2 fixed />}
-                            Title={({ collapsed }) => (
-                              <ThemedTitleV2 collapsed={collapsed} text="DB Query Tool" />
-                            )}
-                          >
-                            <Routes>
-                              <Route index element={<Dashboard />} />
-                              <Route path="queries" element={<QueryPage />} />
-                              <Route path="cross-database" element={<CrossDatabaseQueryPage />} />
-                              <Route path="*" element={<ErrorComponent />} />
-                            </Routes>
-                          </ThemedLayoutV2>
-                        }
-                      >
-                        <Route index element={<Dashboard />} />
-                        <Route path="queries" element={<QueryPage />} />
-                        <Route path="cross-database" element={<CrossDatabaseQueryPage />} />
-                      </Route>
-                    </Routes>
+            <Routes>
+              <Route
+                element={
+                  <ThemedLayoutV2
+                    Sider={() => <ThemedSiderV2 fixed />}
+                    Title={({ collapsed }) => (
+                      <ThemedTitleV2 collapsed={collapsed} text="DB Query Tool" />
+                    )}
+                  />
+                }
+              >
+                <Route index element={<Dashboard />} />
+                <Route path="queries" element={<QueryPage />} />
+                <Route path="cross-database" element={<CrossDatabaseQueryPage />} />
+                <Route path="*" element={<ErrorComponent />} />
+              </Route>
+            </Routes>
             <RefineKbar />
           </Refine>
         </AntdApp>

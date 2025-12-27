@@ -1,7 +1,9 @@
 import React from 'react';
-import { Card, Table, Tag, Typography, Empty, Alert } from 'antd';
-import { TableOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { Card, Table, Tag, Typography, Empty, Alert, Button, Space, Dropdown, message } from 'antd';
+import { TableOutlined, CloseCircleOutlined, ClockCircleOutlined, DownloadOutlined } from '@ant-design/icons';
+import type { MenuProps } from 'antd';
 import { QueryResult } from '../../types';
+import { exportToCSV, exportToJSON, generateFilename } from '../../utils/exportData';
 
 const { Text } = Typography;
 
@@ -14,6 +16,40 @@ export const QueryResults: React.FC<QueryResultsProps> = ({
   queryResult,
   loading = false,
 }) => {
+  const handleExport = (format: 'csv' | 'json') => {
+    if (!queryResult?.results || queryResult.results.length === 0) {
+      message.warning('没有数据可供导出');
+      return;
+    }
+
+    try {
+      if (format === 'csv') {
+        const filename = generateFilename('query_results', 'csv');
+        exportToCSV(queryResult.results, filename);
+        message.success(`已导出 ${queryResult.results.length} 行数据到 ${filename}`);
+      } else {
+        const filename = generateFilename('query_results', 'json');
+        exportToJSON(queryResult.results, filename);
+        message.success(`已导出 ${queryResult.results.length} 行数据到 ${filename}`);
+      }
+    } catch (error: any) {
+      message.error(`导出失败: ${error.message}`);
+    }
+  };
+
+  const exportMenuItems: MenuProps['items'] = [
+    {
+      key: 'csv',
+      label: '导出为 CSV',
+      onClick: () => handleExport('csv'),
+    },
+    {
+      key: 'json',
+      label: '导出为 JSON',
+      onClick: () => handleExport('json'),
+    },
+  ];
+
   if (!queryResult) {
     return (
       <Card
@@ -112,14 +148,19 @@ export const QueryResults: React.FC<QueryResultsProps> = ({
           </span>
         }
         extra={
-          <div>
+          <Space>
             <Text type="secondary">
               共 {queryResult.row_count || 0} 行
               {queryResult.execution_time_ms !== undefined && (
                 <> · 执行时间: {queryResult.execution_time_ms}ms</>
               )}
             </Text>
-          </div>
+            <Dropdown menu={{ items: exportMenuItems }} placement="bottomRight">
+              <Button icon={<DownloadOutlined />} size="small">
+                导出数据
+              </Button>
+            </Dropdown>
+          </Space>
         }
       >
         <Table
