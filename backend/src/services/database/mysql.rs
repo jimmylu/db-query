@@ -134,7 +134,7 @@ impl DatabaseAdapter for MySQLAdapter {
         };
 
         // Create translator service
-        let mut translator_service = DialectTranslationService::new();
+        let translator_service = DialectTranslationService::new();
 
         // Translate DataFusion SQL to MySQL dialect
         let translated_sql = translator_service

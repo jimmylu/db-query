@@ -26,10 +26,6 @@ pub mod federated_executor; // DataFusionFederatedExecutor
 
 // Re-exports for convenient access
 pub use session::{DataFusionSessionManager, SessionConfig};
-pub use catalog::DataFusionCatalogManager;
-pub use dialect::DialectTranslator;
-pub use executor::DataFusionQueryExecutor;
-pub use converter::DataFusionResultConverter;
 pub use translator::{DialectTranslationService, DatabaseType};
 pub use cross_db_planner::CrossDatabaseQueryPlanner;
 pub use federated_executor::DataFusionFederatedExecutor;

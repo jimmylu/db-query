@@ -10,7 +10,6 @@ mod services;
 mod storage;
 mod validation;
 
-use api::routes::create_router;
 use config::Config;
 
 #[tokio::main]

@@ -5,13 +5,12 @@ pub mod mysql;
 pub mod doris;
 pub mod druid;
 
-pub use adapter::{DatabaseAdapter, DatabaseConnectionInfo, QueryResult};
+pub use adapter::DatabaseAdapter;
 pub use postgresql::PostgreSQLAdapter;
 pub use mysql::MySQLAdapter;
 pub use doris::DorisAdapter;
 pub use druid::DruidAdapter;
 
-use crate::models::{DatabaseConnection, DatabaseMetadata};
 use crate::api::middleware::AppError;
 use crate::services::ConnectionPoolManager;
 use std::sync::Arc;

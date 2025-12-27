@@ -12,8 +12,6 @@ use crate::services::database::adapter::DatabaseAdapter;
 use crate::services::datafusion::{DataFusionSessionManager, SessionConfig};
 use datafusion::arrow::array::{ArrayRef, RecordBatch, StringArray, Int64Array, Float64Array, Array};
 use datafusion::arrow::datatypes::{Schema, Field, DataType};
-use datafusion::execution::context::SessionContext;
-use datafusion::prelude::*;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::time::timeout;

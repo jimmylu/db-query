@@ -88,7 +88,7 @@ impl DialectTranslator for PostgreSQLDialectTranslator {
         }
 
         // PostgreSQL-specific transformations
-        let mut translated = datafusion_sql.to_string();
+        let translated = datafusion_sql.to_string();
 
         // Handle any PostgreSQL-specific syntax needs
         // (Currently DataFusion SQL is already PostgreSQL-compatible)

@@ -484,7 +484,7 @@ impl CrossDatabaseQueryPlanner {
         select: &sqlparser::ast::Select,
         tables: &[(String, Option<String>, String)],
     ) -> Result<Vec<JoinCondition>, AppError> {
-        use sqlparser::ast::{Expr, JoinConstraint, JoinOperator};
+        use sqlparser::ast::{JoinConstraint, JoinOperator};
 
         let mut conditions = Vec::new();
 
