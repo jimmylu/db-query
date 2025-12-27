@@ -167,12 +167,16 @@ export const QueryResults: React.FC<QueryResultsProps> = ({
           columns={columns}
           dataSource={dataSource}
           pagination={{
-            pageSize: 50,
+            pageSize: 100,
+            pageSizeOptions: ['50', '100', '200', '500', '1000'],
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条记录`,
+            showQuickJumper: true,
+            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条记录`,
           }}
           scroll={{ x: 'max-content', y: 600 }}
           size="small"
+          virtual
+          sticky
         />
       </Card>
     );
