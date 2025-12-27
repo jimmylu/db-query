@@ -1,0 +1,7 @@
+{
+  "query": "SELECT * FROM users",
+  "connection_ids": ["1bb2bc4c-b575-49c2-a382-6032a3abe23e"],
+  "timeout_secs": 30,
+  "apply_limit": true,
+  "limit_value": 5
+}

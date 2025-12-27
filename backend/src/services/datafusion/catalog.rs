@@ -7,6 +7,7 @@ use datafusion::catalog::CatalogProvider;
 use datafusion::prelude::*;
 use datafusion::datasource::MemTable;
 use datafusion::arrow::datatypes::{Schema, Field, DataType};
+use datafusion::arrow::record_batch::RecordBatch;
 use std::sync::Arc;
 use std::collections::HashMap;
 use anyhow::{Result, Context, anyhow};
@@ -83,9 +84,14 @@ impl DataFusionCatalogManager {
 
         // Create an empty MemTable as a placeholder
         // Actual data will be fetched when query is executed
+        let schema_ref = Arc::new(schema);
+
+        // Create an empty RecordBatch to satisfy MemTable requirements
+        let empty_batch = RecordBatch::new_empty(schema_ref.clone());
+
         let mem_table = MemTable::try_new(
-            Arc::new(schema),
-            vec![], // Empty initial data
+            schema_ref,
+            vec![vec![empty_batch]], // One partition with one empty batch
         )?;
 
         // Register the table with the session context
@@ -281,6 +287,9 @@ mod tests {
 
         let metadata = create_test_metadata();
         let result = manager.register_database("test_db", metadata).await;
+        if let Err(e) = &result {
+            eprintln!("Registration failed: {:?}", e);
+        }
         assert!(result.is_ok());
 
         // Verify table is registered
