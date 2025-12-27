@@ -18,8 +18,8 @@ pub mod converter; // DataFusionResultConverter
 pub mod translator; // Dialect translation service
 
 // Phase 4: User Story 2 - Cross-Database Queries
-// pub mod cross_db_planner;  // CrossDatabaseQueryPlanner (coming soon)
-// pub mod federated_executor; // FederatedExecutor (coming soon)
+pub mod cross_db_planner;  // CrossDatabaseQueryPlanner
+pub mod federated_executor; // DataFusionFederatedExecutor
 
 // Phase 5: User Story 3 - Extensible Architecture
 // pub mod dialect_registry; // DatabaseDialectRegistry (coming soon)
@@ -31,3 +31,5 @@ pub use dialect::DialectTranslator;
 pub use executor::DataFusionQueryExecutor;
 pub use converter::DataFusionResultConverter;
 pub use translator::{DialectTranslationService, DatabaseType};
+pub use cross_db_planner::CrossDatabaseQueryPlanner;
+pub use federated_executor::DataFusionFederatedExecutor;
