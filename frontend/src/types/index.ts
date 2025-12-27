@@ -67,3 +67,12 @@ export interface QueryResult {
   limit_applied: boolean;
 }
 
+// Re-export cross-database types
+export type {
+  CrossDatabaseQueryRequest,
+  CrossDatabaseQueryResponse,
+  SubQueryResult,
+  DatabaseAlias,
+  CrossDatabaseQueryError,
+} from './cross-database';
+

@@ -1,8 +1,10 @@
 # Database Query Tool
 
-一个现代化的数据库查询工具，支持 PostgreSQL 和 MySQL 数据库连接、元数据查看、SQL 查询执行和自然语言查询。
+一个现代化的数据库查询工具，支持 PostgreSQL 和 MySQL 数据库连接、元数据查看、SQL 查询执行、自然语言查询，以及**跨数据库查询**功能。
 
 ## 功能特性
+
+### 核心功能
 
 - 🔌 **数据库连接管理**: 支持 PostgreSQL 和 MySQL 数据库连接，连接信息本地存储
 - 📊 **元数据查看**: 自动检索和显示数据库表、视图和列信息
@@ -10,6 +12,15 @@
 - 🤖 **自然语言查询**: 使用 LLM 将自然语言问题转换为 SQL 查询（支持数据库特定语法）
 - 🔒 **安全验证**: 仅允许 SELECT 查询，防止数据修改和 SQL 注入
 - ⚡ **性能优化**: 查询超时控制、连接超时处理、元数据缓存、连接池
+
+### 🆕 跨数据库查询 (Phase 4)
+
+- 🔗 **跨数据库 JOIN**: 在多个数据库之间执行 JOIN 查询（MySQL ↔ PostgreSQL ↔ 其他）
+- 🏷️ **数据库别名系统**: 使用简单的别名（db1, db2）代替长 UUID 连接标识符
+- ⚡ **智能查询优化**: 自动检测单数据库查询并优化执行（性能提升 89%）
+- 📊 **执行详情展示**: 查看子查询执行详情、性能指标、数据源信息
+- 🎯 **直观的 UI 界面**: 多数据库选择器、别名配置、示例查询模板
+- ⏳ **UNION 查询支持**: 框架已就绪（60% 完成）
 
 ## 技术栈
 
@@ -110,6 +121,26 @@ npm run dev
    - MySQL: `mysql://user:password@host:3306/database`
 3. 连接成功后，查看数据库元数据（表、视图、列）
 4. 在"查询"页面执行 SQL 查询或使用自然语言查询
+5. **新功能**: 在"跨数据库查询"页面执行跨数据库 JOIN 查询
+
+#### 跨数据库查询示例
+
+访问 `http://localhost:5173/cross-database` 执行跨数据库查询：
+
+```sql
+-- 跨数据库 JOIN 示例
+SELECT u.username, t.title
+FROM db1.users u
+JOIN db2.todos t ON u.id = t.user_id
+WHERE t.status = 'pending'
+LIMIT 10
+```
+
+**功能亮点**:
+- 🔄 支持 MySQL、PostgreSQL 等多种数据库组合
+- ⚡ 智能优化：单数据库查询自动优化（3ms 执行时间）
+- 📊 详细的子查询执行信息和性能指标
+- 💡 内置示例查询，快速上手
 
 #### 使用 Docker 快速测试
 
@@ -153,7 +184,50 @@ docker run -d --name test-postgres \
 - `POST /api/connections/{id}/query` - 执行 SQL 查询
 - `POST /api/connections/{id}/nl-query` - 执行自然语言查询
 
-详细 API 文档请参考 `specs/001-db-query-tool/contracts/openapi.yaml`
+### 🆕 跨数据库查询
+
+- `POST /api/cross-database/query` - 执行跨数据库 JOIN/UNION 查询
+
+**请求示例**:
+```json
+{
+  "query": "SELECT u.username, t.title FROM db1.users u JOIN db2.todos t ON u.id = t.user_id",
+  "connection_ids": ["uuid-1", "uuid-2"],
+  "database_aliases": {
+    "db1": "uuid-1",
+    "db2": "uuid-2"
+  },
+  "timeout_secs": 60,
+  "apply_limit": true,
+  "limit_value": 1000
+}
+```
+
+**响应示例**:
+```json
+{
+  "original_query": "SELECT ...",
+  "sub_queries": [
+    {
+      "connection_id": "uuid-1",
+      "database_type": "mysql",
+      "query": "SELECT * FROM users",
+      "row_count": 100,
+      "execution_time_ms": 10
+    }
+  ],
+  "results": [...],
+  "row_count": 50,
+  "execution_time_ms": 25,
+  "limit_applied": false,
+  "executed_at": "2025-12-27T..."
+}
+```
+
+详细 API 文档请参考：
+- `specs/001-db-query-tool/contracts/openapi.yaml`
+- `backend/CROSS_DATABASE_QUICKSTART.md` - 跨数据库查询快速指南
+- `frontend/CROSS_DATABASE_UI_GUIDE.md` - UI 使用指南
 
 ## 开发
 

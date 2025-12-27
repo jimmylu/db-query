@@ -14,6 +14,7 @@ import '@refinedev/antd/dist/reset.css';
 import { dataProvider } from './providers/dataProvider';
 import { Dashboard } from './pages/Dashboard';
 import { QueryPage } from './pages/QueryPage';
+import { CrossDatabaseQueryPage } from './pages/CrossDatabaseQueryPage';
 
 function App() {
   return (
@@ -31,6 +32,10 @@ function App() {
                       {
                         name: 'queries',
                         list: '/queries',
+                      },
+                      {
+                        name: 'cross-database',
+                        list: '/cross-database',
                       },
                     ]}
             options={{
@@ -50,6 +55,7 @@ function App() {
                             <Routes>
                               <Route index element={<Dashboard />} />
                               <Route path="queries" element={<QueryPage />} />
+                              <Route path="cross-database" element={<CrossDatabaseQueryPage />} />
                               <Route path="*" element={<ErrorComponent />} />
                             </Routes>
                           </ThemedLayoutV2>
@@ -57,6 +63,7 @@ function App() {
                       >
                         <Route index element={<Dashboard />} />
                         <Route path="queries" element={<QueryPage />} />
+                        <Route path="cross-database" element={<CrossDatabaseQueryPage />} />
                       </Route>
                     </Routes>
             <RefineKbar />

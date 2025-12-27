@@ -200,3 +200,61 @@ fn convert_model_db_type_to_service(db_type: ModelDatabaseType) -> Result<Databa
         ModelDatabaseType::Druid => Ok(DatabaseType::Druid),
     }
 }
+
+/// Execute cross-database query
+///
+/// Allows querying across multiple databases with JOINs and UNIONs
+pub async fn execute_cross_database_query(
+    State(state): State<AppState>,
+    Json(payload): Json<crate::models::CrossDatabaseQueryRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    tracing::info!(
+        "Executing cross-database query across {} connections",
+        payload.connection_ids.len()
+    );
+
+    // Validate request
+    payload
+        .validate()
+        .map_err(|e| AppError::Validation(e))?;
+
+    // Create planner (automatically uses aliases if provided)
+    use crate::services::datafusion::CrossDatabaseQueryPlanner;
+    let planner = CrossDatabaseQueryPlanner::from_request(&payload);
+
+    // Generate execution plan
+    let plan = planner.plan_query(&payload)?;
+
+    // Get adapters for all connections
+    let mut adapters = std::collections::HashMap::new();
+
+    for conn_id in &payload.connection_ids {
+        // Get connection from storage
+        let connection = state
+            .storage
+            .get_connection(conn_id)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .ok_or_else(|| AppError::NotFound(format!("Connection {} not found", conn_id)))?;
+
+        // Create adapter
+        let db_type = DatabaseType::from_str(&connection.database_type)?;
+        let adapter = create_adapter(
+            db_type,
+            &connection.connection_url,
+            state.pool_manager.clone(),
+        )
+        .await?;
+
+        adapters.insert(conn_id.clone(), adapter);
+    }
+
+    // Execute cross-database query
+    use crate::services::datafusion::DataFusionFederatedExecutor;
+    let executor = DataFusionFederatedExecutor::new();
+    let result = executor
+        .execute_cross_database_query(plan, adapters)
+        .await?;
+
+    Ok(Json(serde_json::json!(result)))
+}
