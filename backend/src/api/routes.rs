@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post, delete},
+    routing::{get, post},
     Router,
 };
 use tower_http::cors::CorsLayer;
@@ -51,6 +51,14 @@ pub fn create_router_with_state(storage: Arc<SqliteStorage>, config: Config) -> 
         .route(
             "/api/connections/{id}/nl-query",
             post(query::execute_natural_language_query),
+        )
+        .route(
+            "/api/connections/{id}/unified-query",
+            post(query::execute_unified_query),
+        )
+        .route(
+            "/api/cross-database/query",
+            post(query::execute_cross_database_query),
         )
         .layer(CorsLayer::permissive())
         .with_state(state)

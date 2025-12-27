@@ -116,6 +116,38 @@ impl DatabaseAdapter for MySQLAdapter {
         "mysql"
     }
 
+    fn dialect_name(&self) -> &str {
+        "mysql"
+    }
+
+    fn supports_datafusion_execution(&self) -> bool {
+        true
+    }
+
+    async fn execute_datafusion_query(
+        &self,
+        datafusion_sql: &str,
+        timeout_secs: u64,
+    ) -> Result<(datafusion::arrow::datatypes::SchemaRef, Vec<datafusion::arrow::record_batch::RecordBatch>), AppError> {
+        use crate::services::datafusion::{
+            DialectTranslationService, DatabaseType as DFDatabaseType,
+        };
+
+        // Create translator service
+        let mut translator_service = DialectTranslationService::new();
+
+        // Translate DataFusion SQL to MySQL dialect
+        let translated_sql = translator_service
+            .translate_query(datafusion_sql, DFDatabaseType::MySQL)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to translate SQL: {}", e)))?;
+
+        // Execute the translated query against MySQL
+        // For now, return NotImplemented as full Arrow conversion is complex
+        // The basic execute_query method should be used instead
+        Err(AppError::NotImplemented("Full MySQL to Arrow conversion not yet implemented. Use execute_query instead.".to_string()))
+    }
+
     async fn test_connection(&self) -> Result<(), AppError> {
         // Get a connection from the pool to test
         let _conn = self.get_conn().await?;

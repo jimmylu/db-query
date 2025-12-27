@@ -51,6 +51,22 @@ impl DatabaseAdapter for DruidAdapter {
         "druid"
     }
 
+    fn dialect_name(&self) -> &str {
+        "generic" // Druid has its own SQL dialect
+    }
+
+    fn supports_datafusion_execution(&self) -> bool {
+        false // Not yet implemented
+    }
+
+    async fn execute_datafusion_query(
+        &self,
+        _datafusion_sql: &str,
+        _timeout_secs: u64,
+    ) -> Result<(datafusion::arrow::datatypes::SchemaRef, Vec<datafusion::arrow::record_batch::RecordBatch>), AppError> {
+        Err(AppError::NotImplemented("Druid DataFusion execution not yet implemented. This will be added in Phase 5.".to_string()))
+    }
+
     async fn test_connection(&self) -> Result<(), AppError> {
         // TODO: Implement Druid connection test via REST API
         Err(AppError::Internal("Druid connection test not yet implemented.".to_string()))
