@@ -5,7 +5,7 @@ use axum::{
 use tower_http::cors::CorsLayer;
 use std::sync::Arc;
 
-use crate::api::handlers::{connection, metadata, query};
+use crate::api::handlers::{connection, metadata, query, cross_database_query};
 use crate::api::handlers::connection::AppState;
 use crate::storage::SqliteStorage;
 use crate::config::Config;
@@ -58,7 +58,7 @@ pub fn create_router_with_state(storage: Arc<SqliteStorage>, config: Config) -> 
         )
         .route(
             "/api/cross-database/query",
-            post(query::execute_cross_database_query),
+            post(cross_database_query::execute_cross_database_query),
         )
         .layer(CorsLayer::permissive())
         .with_state(state)
