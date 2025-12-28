@@ -511,16 +511,19 @@ impl MySQLAdapter {
                 DataType::Date32 => {
                     let mut builder = Date32Builder::new();
                     for row in rows {
-                        let value: Option<String> = row.get_opt(col_idx)
+                        let days: Option<i32> = row.get_opt(col_idx)
                             .and_then(|v| v.ok())
                             .and_then(|v| match v {
                                 MySqlValue::Date(y, m, d, _, _, _, _) => {
-                                    Some(format!("{:04}-{:02}-{:02}", y, m, d))
+                                    // Convert MySQL DATE to days since Unix epoch
+                                    chrono::NaiveDate::from_ymd_opt(y as i32, m as u32, d as u32)
+                                        .map(|date| {
+                                            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+                                            date.signed_duration_since(epoch).num_days() as i32
+                                        })
                                 }
                                 _ => None,
                             });
-                        // Placeholder: Use 0 for now (proper conversion requires chrono)
-                        let days = value.and_then(|_| Some(0));
                         builder.append_option(days);
                     }
                     Arc::new(builder.finish())
@@ -528,16 +531,19 @@ impl MySQLAdapter {
                 DataType::Timestamp(_, _) => {
                     let mut builder = TimestampMicrosecondBuilder::new();
                     for row in rows {
-                        let value: Option<String> = row.get_opt(col_idx)
+                        let micros: Option<i64> = row.get_opt(col_idx)
                             .and_then(|v| v.ok())
                             .and_then(|v| match v {
-                                MySqlValue::Date(y, m, d, h, min, s, _) => {
-                                    Some(format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y, m, d, h, min, s))
+                                MySqlValue::Date(y, m, d, h, min, s, us) => {
+                                    // Convert MySQL DATETIME/TIMESTAMP to microseconds since Unix epoch
+                                    chrono::NaiveDate::from_ymd_opt(y as i32, m as u32, d as u32)
+                                        .and_then(|date| {
+                                            date.and_hms_micro_opt(h as u32, min as u32, s as u32, us)
+                                        })
+                                        .map(|dt| dt.and_utc().timestamp_micros())
                                 }
                                 _ => None,
                             });
-                        // Placeholder: Use 0 for now (proper conversion requires chrono)
-                        let micros = value.and_then(|_| Some(0));
                         builder.append_option(micros);
                     }
                     Arc::new(builder.finish())
