@@ -8,6 +8,7 @@ pub struct DatabaseConnection {
     pub name: Option<String>,
     pub connection_url: String,
     pub database_type: String,
+    pub domain_id: Option<String>,
     pub status: ConnectionStatus,
     pub created_at: DateTime<Utc>,
     pub last_connected_at: Option<DateTime<Utc>>,
@@ -27,12 +28,14 @@ impl DatabaseConnection {
         name: Option<String>,
         connection_url: String,
         database_type: String,
+        domain_id: Option<String>,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             name,
             connection_url,
             database_type,
+            domain_id,
             status: ConnectionStatus::Disconnected,
             created_at: Utc::now(),
             last_connected_at: None,
@@ -60,6 +63,7 @@ pub struct CreateConnectionRequest {
     pub connection_url: String,
     #[serde(default = "default_database_type")]
     pub database_type: String,
+    pub domain_id: Option<String>,
 }
 
 fn default_database_type() -> String {

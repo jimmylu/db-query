@@ -1,0 +1,1009 @@
+openapi: 3.0.3
+info:
+  title: Domain-Based UI Refactoring API
+  description: |
+    API contract for the domain-based UI refactoring feature. This API introduces
+    domain management capabilities to organize database connections, saved queries,
+    and query history into isolated domains.
+
+    **Key Features**:
+    - Create and manage organizational domains
+    - Domain-scoped database connections
+    - Domain-scoped saved queries and query history
+    - 100% data isolation between domains
+    - CASCADE delete for domain cleanup
+  version: 1.0.0
+  contact:
+    name: Database Query Tool API
+    url: https://github.com/yourusername/db-query-backend
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+
+tags:
+  - name: domains
+    description: Domain management operations
+  - name: connections
+    description: Database connection management (domain-scoped)
+  - name: queries
+    description: Saved queries and query history (domain-scoped)
+
+paths:
+  # ============================================================================
+  # Domain Management Endpoints
+  # ============================================================================
+
+  /domains:
+    get:
+      tags:
+        - domains
+      summary: List all domains
+      description: |
+        Retrieve all domains with computed resource counts (connections, saved queries, history).
+        Domains are returned sorted by creation date (newest first).
+      operationId: listDomains
+      responses:
+        '200':
+          description: List of domains retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Domain'
+              example:
+                - id: "550e8400-e29b-41d4-a716-446655440000"
+                  name: "Production"
+                  description: "Production database connections"
+                  created_at: "2025-12-28T10:30:00Z"
+                  updated_at: "2025-12-28T10:30:00Z"
+                  connection_count: 3
+                  saved_query_count: 5
+                  query_history_count: 42
+                - id: "660e8400-e29b-41d4-a716-446655440001"
+                  name: "Development"
+                  description: null
+                  created_at: "2025-12-28T11:00:00Z"
+                  updated_at: "2025-12-28T11:00:00Z"
+                  connection_count: 1
+                  saved_query_count: 2
+                  query_history_count: 10
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - domains
+      summary: Create a new domain
+      description: |
+        Create a new organizational domain with a unique name and optional description.
+        Domain names must be 1-50 characters, alphanumeric with spaces, hyphens, underscores.
+      operationId: createDomain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDomainRequest'
+            example:
+              name: "Production"
+              description: "Production database connections"
+      responses:
+        '201':
+          description: Domain created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+              example:
+                id: "550e8400-e29b-41d4-a716-446655440000"
+                name: "Production"
+                description: "Production database connections"
+                created_at: "2025-12-28T10:30:00Z"
+                updated_at: "2025-12-28T10:30:00Z"
+                connection_count: 0
+                saved_query_count: 0
+                query_history_count: 0
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Domain name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Domain name 'Production' already exists"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /domains/{id}:
+    get:
+      tags:
+        - domains
+      summary: Get a domain by ID
+      description: Retrieve a specific domain with resource counts
+      operationId: getDomain
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+      responses:
+        '200':
+          description: Domain retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - domains
+      summary: Update a domain
+      description: Update domain name and/or description
+      operationId: updateDomain
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDomainRequest'
+            example:
+              name: "Production Environment"
+              description: "Updated description"
+      responses:
+        '200':
+          description: Domain updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Domain name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - domains
+      summary: Delete a domain (CASCADE)
+      description: |
+        Delete a domain and all associated resources (connections, saved queries, history).
+        This is a CASCADE delete operation - all domain-scoped data will be permanently removed.
+        Frontend should display a confirmation dialog with resource counts before calling this endpoint.
+      operationId: deleteDomain
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+      responses:
+        '204':
+          description: Domain deleted successfully (no content)
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ============================================================================
+  # Connection Management Endpoints (Domain-Scoped)
+  # ============================================================================
+
+  /connections:
+    get:
+      tags:
+        - connections
+      summary: List connections (filtered by domain)
+      description: |
+        Retrieve all database connections for a specific domain.
+        Requires domain_id query parameter for data isolation.
+      operationId: listConnections
+      parameters:
+        - name: domain_id
+          in: query
+          description: Filter connections by domain ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Connections retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Connection'
+              example:
+                - id: "770e8400-e29b-41d4-a716-446655440002"
+                  domain_id: "550e8400-e29b-41d4-a716-446655440000"
+                  name: "Production DB"
+                  database_type: "postgresql"
+                  connection_url: "postgresql://user:pass@localhost:5432/proddb"
+                  status: "connected"
+                  created_at: "2025-12-28T10:35:00Z"
+                  updated_at: "2025-12-28T10:35:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - connections
+      summary: Create a connection (domain-scoped)
+      description: |
+        Create a new database connection within a specific domain.
+        Connection names must be unique within the domain.
+      operationId: createConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConnectionRequest'
+            example:
+              domain_id: "550e8400-e29b-41d4-a716-446655440000"
+              name: "Production DB"
+              database_type: "postgresql"
+              connection_url: "postgresql://user:pass@localhost:5432/proddb"
+      responses:
+        '201':
+          description: Connection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Connection name already exists in this domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /connections/{id}:
+    get:
+      tags:
+        - connections
+      summary: Get a connection by ID
+      operationId: getConnection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Connection retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - connections
+      summary: Update a connection
+      operationId: updateConnection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConnectionRequest'
+      responses:
+        '200':
+          description: Connection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Connection name already exists in this domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - connections
+      summary: Delete a connection
+      description: |
+        Delete a database connection. Saved queries and history referencing this connection
+        will be orphaned but not deleted.
+      operationId: deleteConnection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Connection deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ============================================================================
+  # Saved Queries Endpoints (Domain-Scoped)
+  # ============================================================================
+
+  /domains/{id}/queries/save:
+    post:
+      tags:
+        - queries
+      summary: Save a query within a domain
+      description: |
+        Save a SQL query with a name within the specified domain.
+        SQL text must pass validation (SELECT-only, auto-LIMIT applied).
+        Query names must be unique within the domain.
+      operationId: saveQuery
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveQueryRequest'
+            example:
+              connection_id: "770e8400-e29b-41d4-a716-446655440002"
+              name: "Active Users"
+              sql_text: "SELECT * FROM users WHERE status = 'active'"
+      responses:
+        '201':
+          description: Query saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedQuery'
+              example:
+                id: "880e8400-e29b-41d4-a716-446655440003"
+                domain_id: "550e8400-e29b-41d4-a716-446655440000"
+                connection_id: "770e8400-e29b-41d4-a716-446655440002"
+                name: "Active Users"
+                sql_text: "SELECT * FROM users WHERE status = 'active' LIMIT 1000"
+                created_at: "2025-12-28T10:40:00Z"
+                updated_at: "2025-12-28T10:40:00Z"
+        '400':
+          description: Invalid SQL or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Only SELECT queries are permitted"
+        '404':
+          description: Domain or connection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Query name already exists in this domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /domains/{id}/queries/saved:
+    get:
+      tags:
+        - queries
+      summary: List saved queries for a domain
+      description: Retrieve all saved queries within the specified domain
+      operationId: listSavedQueries
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+      responses:
+        '200':
+          description: Saved queries retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SavedQuery'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /domains/{id}/queries/saved/{query_id}:
+    get:
+      tags:
+        - queries
+      summary: Get a saved query by ID
+      operationId: getSavedQuery
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+        - name: query_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Saved query retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedQuery'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - queries
+      summary: Update a saved query
+      operationId: updateSavedQuery
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+        - name: query_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSavedQueryRequest'
+      responses:
+        '200':
+          description: Saved query updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedQuery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Query name already exists in this domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - queries
+      summary: Delete a saved query
+      operationId: deleteSavedQuery
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+        - name: query_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Saved query deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ============================================================================
+  # Query History Endpoints (Domain-Scoped)
+  # ============================================================================
+
+  /domains/{id}/queries/history:
+    get:
+      tags:
+        - queries
+      summary: List query history for a domain
+      description: |
+        Retrieve query execution history for the specified domain.
+        Results are sorted by execution time (newest first).
+      operationId: listQueryHistory
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+        - name: limit
+          in: query
+          description: Maximum number of history entries to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          example: 50
+        - name: offset
+          in: query
+          description: Number of history entries to skip (pagination)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          example: 0
+      responses:
+        '200':
+          description: Query history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QueryHistory'
+              example:
+                - id: "990e8400-e29b-41d4-a716-446655440004"
+                  domain_id: "550e8400-e29b-41d4-a716-446655440000"
+                  connection_id: "770e8400-e29b-41d4-a716-446655440002"
+                  sql_text: "SELECT * FROM users WHERE status = 'active' LIMIT 1000"
+                  execution_time_ms: 234
+                  row_count: 42
+                  status: "success"
+                  error_message: null
+                  executed_at: "2025-12-28T10:45:00Z"
+                - id: "aa0e8400-e29b-41d4-a716-446655440005"
+                  domain_id: "550e8400-e29b-41d4-a716-446655440000"
+                  connection_id: "770e8400-e29b-41d4-a716-446655440002"
+                  sql_text: "SELECT COUNT(*) FROM orders"
+                  execution_time_ms: 0
+                  row_count: 0
+                  status: "cancelled"
+                  error_message: "User switched domains during execution"
+                  executed_at: "2025-12-28T10:50:00Z"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+# ============================================================================
+# Reusable Components
+# ============================================================================
+
+components:
+  parameters:
+    DomainId:
+      name: id
+      in: path
+      description: Domain UUID
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+    # Domain Schemas
+    Domain:
+      type: object
+      required:
+        - id
+        - name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Domain unique identifier (UUID v4)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Domain name (unique, alphanumeric with spaces/hyphens/underscores)
+          example: "Production"
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Optional domain description
+          example: "Production database connections"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601 UTC)
+          example: "2025-12-28T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp (ISO 8601 UTC)
+          example: "2025-12-28T10:30:00Z"
+        connection_count:
+          type: integer
+          minimum: 0
+          description: Number of connections in this domain (computed)
+          example: 3
+        saved_query_count:
+          type: integer
+          minimum: 0
+          description: Number of saved queries in this domain (computed)
+          example: 5
+        query_history_count:
+          type: integer
+          minimum: 0
+          description: Number of query history entries in this domain (computed)
+          example: 42
+
+    CreateDomainRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9\s\-_]+$'
+          description: Domain name (unique, alphanumeric with spaces/hyphens/underscores)
+          example: "Production"
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Optional domain description
+          example: "Production database connections"
+
+    UpdateDomainRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9\s\-_]+$'
+          description: Updated domain name
+          example: "Production Environment"
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Updated domain description
+          example: "Updated description"
+
+    # Connection Schemas
+    Connection:
+      type: object
+      required:
+        - id
+        - domain_id
+        - name
+        - database_type
+        - connection_url
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Connection unique identifier (UUID v4)
+          example: "770e8400-e29b-41d4-a716-446655440002"
+        domain_id:
+          type: string
+          format: uuid
+          description: Domain this connection belongs to
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Connection display name (unique within domain)
+          example: "Production DB"
+        database_type:
+          type: string
+          enum:
+            - postgresql
+            - mysql
+            - doris
+            - druid
+          description: Database type
+          example: "postgresql"
+        connection_url:
+          type: string
+          description: Database connection URL
+          example: "postgresql://user:pass@localhost:5432/proddb"
+        status:
+          type: string
+          enum:
+            - connected
+            - disconnected
+            - error
+          description: Connection status (transient, not persisted)
+          example: "connected"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601 UTC)
+          example: "2025-12-28T10:35:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp (ISO 8601 UTC)
+          example: "2025-12-28T10:35:00Z"
+
+    CreateConnectionRequest:
+      type: object
+      required:
+        - domain_id
+        - name
+        - database_type
+        - connection_url
+      properties:
+        domain_id:
+          type: string
+          format: uuid
+          description: Domain to create connection in
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Connection display name
+          example: "Production DB"
+        database_type:
+          type: string
+          enum:
+            - postgresql
+            - mysql
+            - doris
+            - druid
+          description: Database type
+          example: "postgresql"
+        connection_url:
+          type: string
+          description: Database connection URL
+          example: "postgresql://user:pass@localhost:5432/proddb"
+
+    UpdateConnectionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Updated connection name
+        connection_url:
+          type: string
+          description: Updated connection URL
+
+    # Saved Query Schemas
+    SavedQuery:
+      type: object
+      required:
+        - id
+        - domain_id
+        - connection_id
+        - name
+        - sql_text
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Saved query unique identifier (UUID v4)
+          example: "880e8400-e29b-41d4-a716-446655440003"
+        domain_id:
+          type: string
+          format: uuid
+          description: Domain this query belongs to
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        connection_id:
+          type: string
+          format: uuid
+          description: Connection this query is associated with
+          example: "770e8400-e29b-41d4-a716-446655440002"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Query display name (unique within domain)
+          example: "Active Users"
+        sql_text:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: SQL query text (SELECT-only, auto-LIMIT applied)
+          example: "SELECT * FROM users WHERE status = 'active' LIMIT 1000"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601 UTC)
+          example: "2025-12-28T10:40:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp (ISO 8601 UTC)
+          example: "2025-12-28T10:40:00Z"
+
+    SaveQueryRequest:
+      type: object
+      required:
+        - connection_id
+        - name
+        - sql_text
+      properties:
+        connection_id:
+          type: string
+          format: uuid
+          description: Connection to associate with this query
+          example: "770e8400-e29b-41d4-a716-446655440002"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Query display name
+          example: "Active Users"
+        sql_text:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: SQL query text (will be validated for SELECT-only)
+          example: "SELECT * FROM users WHERE status = 'active'"
+
+    UpdateSavedQueryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Updated query name
+        sql_text:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: Updated SQL query text
+
+    # Query History Schemas
+    QueryHistory:
+      type: object
+      required:
+        - id
+        - domain_id
+        - connection_id
+        - sql_text
+        - execution_time_ms
+        - row_count
+        - status
+        - executed_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: History entry unique identifier (UUID v4)
+          example: "990e8400-e29b-41d4-a716-446655440004"
+        domain_id:
+          type: string
+          format: uuid
+          description: Domain this query was executed in
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        connection_id:
+          type: string
+          format: uuid
+          description: Connection this query was executed against
+          example: "770e8400-e29b-41d4-a716-446655440002"
+        sql_text:
+          type: string
+          description: SQL query text that was executed
+          example: "SELECT * FROM users WHERE status = 'active' LIMIT 1000"
+        execution_time_ms:
+          type: integer
+          minimum: 0
+          description: Query execution time in milliseconds
+          example: 234
+        row_count:
+          type: integer
+          minimum: 0
+          description: Number of rows returned
+          example: 42
+        status:
+          type: string
+          enum:
+            - success
+            - error
+            - cancelled
+          description: Query execution status
+          example: "success"
+        error_message:
+          type: string
+          maxLength: 1000
+          nullable: true
+          description: Error message if status is 'error' or 'cancelled'
+          example: null
+        executed_at:
+          type: string
+          format: date-time
+          description: Execution timestamp (ISO 8601 UTC)
+          example: "2025-12-28T10:45:00Z"
+
+    # Error Schemas
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Domain not found"
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Domain name cannot be empty"
+
+    NotFound:
+      description: Requested resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Domain not found"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "An unexpected error occurred"

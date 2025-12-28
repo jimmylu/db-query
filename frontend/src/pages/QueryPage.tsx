@@ -13,8 +13,7 @@ import { DatabaseConnection } from '../types';
 import { QueryHistoryManager, QueryHistoryItem } from '../utils/queryHistory';
 import { QueryTemplateManager, QueryTemplate } from '../utils/queryTemplates';
 
-const { Title, Text, Paragraph } = Typography;
-const { Panel } = Collapse;
+const { Text, Paragraph } = Typography;
 
 export const QueryPage: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -26,6 +25,7 @@ export const QueryPage: React.FC = () => {
   const [connections, setConnections] = useState<DatabaseConnection[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'sql' | 'nl' | 'unified'>('sql');
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
 
   // Unified SQL states
   const [useUnifiedQuery, setUseUnifiedQuery] = useState(false);
@@ -77,7 +77,42 @@ export const QueryPage: React.FC = () => {
   useEffect(() => {
     loadConnections();
     loadQueryHistory();
+
+    // Listen for global domain changes from CustomHeader
+    const handleDomainChanged = (event: CustomEvent) => {
+      const newDomainId = event.detail.domainId;
+      console.log('QueryPage received domain change:', newDomainId);
+      setSelectedDomainId(newDomainId);
+    };
+
+    window.addEventListener('domainChanged', handleDomainChanged as EventListener);
+
+    // Load initial domain from localStorage
+    const storedDomainId = localStorage.getItem('selectedDomainId');
+    console.log('QueryPage initial domain from localStorage:', storedDomainId);
+    if (storedDomainId) {
+      setSelectedDomainId(storedDomainId);
+    }
+
+    return () => {
+      window.removeEventListener('domainChanged', handleDomainChanged as EventListener);
+    };
   }, []);
+
+  // Auto-select first connection when domain changes or connections are loaded
+  useEffect(() => {
+    const filtered = selectedDomainId
+      ? connections.filter(conn => conn.domain_id === selectedDomainId)
+      : connections;
+
+    if (filtered.length > 0 && !filtered.find(c => c.id === selectedConnectionId)) {
+      console.log('QueryPage: Auto-selecting first connection:', filtered[0].id);
+      setSelectedConnectionId(filtered[0].id);
+    } else if (filtered.length === 0) {
+      console.log('QueryPage: No connections available, clearing selection');
+      setSelectedConnectionId(null);
+    }
+  }, [selectedDomainId, connections]);
 
   // Reload history when showing the drawer
   useEffect(() => {
@@ -105,9 +140,6 @@ export const QueryPage: React.FC = () => {
     try {
       const conns = await connectionService.listConnections();
       setConnections(conns);
-      if (conns.length > 0 && !selectedConnectionId) {
-        setSelectedConnectionId(conns[0].id);
-      }
     } catch (error: any) {
       console.error('Failed to load connections:', error);
     }
@@ -365,20 +397,32 @@ export const QueryPage: React.FC = () => {
     }
   };
 
+  // Filter connections by selected domain
+  const filteredConnections = selectedDomainId
+    ? connections.filter(conn => {
+        console.log(`QueryPage: Filtering connection ${conn.id}: domain_id=${conn.domain_id}, selected=${selectedDomainId}, match=${conn.domain_id === selectedDomainId}`);
+        return conn.domain_id === selectedDomainId;
+      })
+    : connections;
+
+  console.log('QueryPage state:', {
+    selectedDomainId,
+    totalConnections: connections.length,
+    filteredConnections: filteredConnections.length,
+  });
+
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ background: '#f0f2f5' }}>
       <Row gutter={[24, 24]}>
         <Col xs={24}>
           <Space direction="vertical" style={{ width: '100%' }} size="large">
-            <div>
-              <Title level={4}>数据库查询</Title>
-              <Space style={{ marginBottom: 16 }} wrap>
+            <Space style={{ marginBottom: 16 }} wrap>
                 <Select
                   placeholder="选择数据库连接"
                   style={{ width: 300 }}
                   value={selectedConnectionId}
                   onChange={setSelectedConnectionId}
-                  options={connections.map((conn) => ({
+                  options={filteredConnections.map((conn) => ({
                     label: conn.name || conn.connection_url,
                     value: conn.id,
                   }))}
@@ -456,7 +500,6 @@ export const QueryPage: React.FC = () => {
                   style={{ marginTop: 8 }}
                 />
               )}
-            </div>
 
             <Tabs
               activeKey={activeTab}

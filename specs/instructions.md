@@ -37,4 +37,22 @@
 - 要求将datafusion作为统一的sql语义层，对用户使用同一套sql语法，对异构的引擎，会自动进行方言的翻译
 - 要求具备可扩展性，能够容易支持更多的数据库
 - 要求能够跨异构库关联查询
+
+## 重构前端UI
+- 要求按照功能包含领域管理，数据源管理，sql查询编辑器
+- 数据源和sql按照领域管理和隔离
+- UI风格按照amazon cloud的风格
   
+## 进度和计划复盘
+看看还有哪些未完成的，以及下一步计划是什么
+
+## 更新plan和task
+根据项目完成情况的复盘，更新@specs/004-domain-ui-refactor/plan.md 和 @specs/004-domain-ui-refactor/tasks.md,以便后续按照计划按部就班的执行
+
+## 继续执行
+按照 @specs/004-domain-ui-refactor/tasks.md 要求的顺序，继续执行下一步
+
+## 调整phase7
+改变计划，由于考虑扩展性，决定放弃aws cloudscape的使用，继续保持ant design的设计。
+现在phase 7的内容变为基于现有前端框架，调整UI的样式和布局，进而实现模拟aws的风格的效果 
+

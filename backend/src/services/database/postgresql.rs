@@ -44,6 +44,7 @@ impl DatabaseAdapter for PostgreSQLAdapter {
             None,
             self.connection_url.clone(),
             "postgresql".to_string(),
+            None,
         );
         db_connection.id = connection_id.clone();
         db_connection.mark_connected();
