@@ -23,7 +23,7 @@ sqlparser = "0.60.0"
 # DataFusion will handle PostgreSQL connections for query execution
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 # PostgreSQL driver for metadata retrieval and connection pooling
-tokio-postgres = { version = "0.7" }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
 deadpool-postgres = "0.14"
 # MySQL driver for metadata retrieval and connection pooling
 mysql_async = "0.35"

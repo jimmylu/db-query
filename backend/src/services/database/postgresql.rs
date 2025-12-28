@@ -327,14 +327,12 @@ impl PostgreSQLAdapter {
                 DataType::Date32 => {
                     let mut builder = Date32Builder::with_capacity(num_rows);
                     for row in rows {
-                        // PostgreSQL DATE type - stored as days since epoch
-                        // Try to get as string and parse
-                        let value_str: Option<String> = row.try_get(col_idx).ok().flatten();
-                        let days = value_str.and_then(|s| {
-                            // Parse date string and convert to days since epoch
-                            // For simplicity, just convert to Unix timestamp days
-                            // This is a simplified implementation
-                            Some(0) // Placeholder - proper conversion needed
+                        // PostgreSQL DATE type - convert to days since Unix epoch
+                        let value: Option<chrono::NaiveDate> = row.try_get(col_idx).ok().flatten();
+                        let days = value.map(|date| {
+                            // Calculate days since Unix epoch (1970-01-01)
+                            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+                            date.signed_duration_since(epoch).num_days() as i32
                         });
                         builder.append_option(days);
                     }
@@ -343,12 +341,11 @@ impl PostgreSQLAdapter {
                 DataType::Timestamp(_, _) => {
                     let mut builder = TimestampMicrosecondBuilder::with_capacity(num_rows);
                     for row in rows {
-                        // PostgreSQL TIMESTAMP type - convert to string first
-                        let value_str: Option<String> = row.try_get(col_idx).ok().flatten();
-                        let micros = value_str.and_then(|s| {
-                            // Parse timestamp string and convert to microseconds since epoch
-                            // This is a simplified implementation
-                            Some(0) // Placeholder - proper conversion needed
+                        // PostgreSQL TIMESTAMP type - convert to microseconds since Unix epoch
+                        let value: Option<chrono::NaiveDateTime> = row.try_get(col_idx).ok().flatten();
+                        let micros = value.map(|dt| {
+                            // Convert NaiveDateTime to microseconds since Unix epoch
+                            dt.and_utc().timestamp_micros()
                         });
                         builder.append_option(micros);
                     }
