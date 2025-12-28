@@ -957,6 +957,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             last_connected_at: None,
             metadata_cache_id: None,
+            domain_id: Some(domain_id.clone()),
         };
 
         rt.block_on(async {
@@ -1009,6 +1010,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             last_connected_at: Some(chrono::Utc::now()),
             metadata_cache_id: None,
+            domain_id: Some(default_domain_id.to_string()),
         };
 
         rt.block_on(async {
