@@ -143,9 +143,17 @@ impl DatabaseAdapter for DorisAdapter {
             DataFusionSessionManager, SessionConfig,
             DialectTranslationService, DatabaseType as DFDatabaseType,
         };
+        use datafusion::arrow::datatypes::{DataType, Field, Schema, TimeUnit};
+        use datafusion::arrow::array::{
+            ArrayRef, Int8Builder, Int16Builder, Int32Builder, Int64Builder,
+            Float32Builder, Float64Builder, StringBuilder,
+            Date32Builder, TimestampMicrosecondBuilder,
+        };
+        use datafusion::arrow::record_batch::RecordBatch;
+        use std::sync::Arc;
         use std::time::Duration;
 
-        // Create DataFusion session
+        // Create DataFusion session (for potential future use)
         let session_manager = DataFusionSessionManager::new(SessionConfig::default());
         let _session = session_manager.create_session()
             .map_err(|e| AppError::Database(format!("Failed to create DataFusion session: {}", e)))?;
@@ -170,11 +178,30 @@ impl DatabaseAdapter for DorisAdapter {
         .map_err(|_| AppError::Database(format!("Query timeout after {} seconds", timeout_secs)))?
         .map_err(|e| AppError::Database(format!("Query execution failed: {}", e)))?;
 
-        // For now, return a not implemented error as full Arrow conversion needs more work
-        // This can be implemented similar to PostgreSQL adapter's Arrow conversion
-        Err(AppError::NotImplemented(
-            "Full Doris to Arrow conversion not yet implemented. Use execute_query instead.".to_string()
-        ))
+        if rows.is_empty() {
+            // Return empty result with minimal schema
+            let schema = Arc::new(Schema::empty());
+            let batch = RecordBatch::new_empty(schema.clone());
+            return Ok((schema, vec![batch]));
+        }
+
+        // Build Arrow schema from MySQL result columns
+        let first_row = &rows[0];
+        let columns_ref = first_row.columns_ref();
+        let mut fields = Vec::new();
+
+        for column in columns_ref.iter() {
+            let column_name = column.name_str().to_string();
+            let data_type = Self::mysql_column_to_arrow(column);
+            fields.push(Field::new(column_name, data_type, true)); // nullable=true
+        }
+
+        let schema = Arc::new(Schema::new(fields));
+
+        // Convert rows to Arrow RecordBatch
+        let batch = Self::convert_mysql_rows_to_arrow(&rows, schema.clone())?;
+
+        Ok((schema, vec![batch]))
     }
 
     async fn test_connection(&self) -> Result<(), AppError> {
@@ -365,5 +392,192 @@ impl DorisAdapter {
                 json!(format!("{:?}", value))
             }
         }
+    }
+
+    /// Map MySQL column type to Arrow DataType
+    fn mysql_column_to_arrow(col: &mysql_async::Column) -> datafusion::arrow::datatypes::DataType {
+        use mysql_async::consts::ColumnType;
+        use datafusion::arrow::datatypes::{DataType, TimeUnit};
+
+        match col.column_type() {
+            ColumnType::MYSQL_TYPE_TINY => DataType::Int8,
+            ColumnType::MYSQL_TYPE_SHORT => DataType::Int16,
+            ColumnType::MYSQL_TYPE_LONG => DataType::Int32,
+            ColumnType::MYSQL_TYPE_LONGLONG => DataType::Int64,
+            ColumnType::MYSQL_TYPE_FLOAT => DataType::Float32,
+            ColumnType::MYSQL_TYPE_DOUBLE => DataType::Float64,
+            ColumnType::MYSQL_TYPE_DATE => DataType::Date32,
+            ColumnType::MYSQL_TYPE_DATETIME => DataType::Timestamp(TimeUnit::Microsecond, None),
+            ColumnType::MYSQL_TYPE_TIMESTAMP => DataType::Timestamp(TimeUnit::Microsecond, None),
+            _ => DataType::Utf8,
+        }
+    }
+
+    /// Convert MySQL rows to Arrow RecordBatch
+    fn convert_mysql_rows_to_arrow(
+        rows: &[Row],
+        schema: std::sync::Arc<datafusion::arrow::datatypes::Schema>,
+    ) -> Result<datafusion::arrow::record_batch::RecordBatch, AppError> {
+        use datafusion::arrow::datatypes::DataType;
+        use datafusion::arrow::array::{
+            Array, Int8Builder, Int16Builder, Int32Builder, Int64Builder,
+            Float32Builder, Float64Builder, StringBuilder,
+            Date32Builder, TimestampMicrosecondBuilder,
+        };
+        use std::sync::Arc;
+
+        let num_rows = rows.len();
+        let mut columns: Vec<Arc<dyn Array>> = Vec::new();
+
+        for (col_idx, field) in schema.fields().iter().enumerate() {
+            let array: Arc<dyn Array> = match field.data_type() {
+                DataType::Int8 => {
+                    let mut builder = Int8Builder::new();
+                    for row in rows {
+                        let value: Option<i8> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .and_then(|v| match v {
+                                MySqlValue::Int(i) => Some(i as i8),
+                                MySqlValue::UInt(u) => Some(u as i8),
+                                _ => None,
+                            });
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Int16 => {
+                    let mut builder = Int16Builder::new();
+                    for row in rows {
+                        let value: Option<i16> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .and_then(|v| match v {
+                                MySqlValue::Int(i) => Some(i as i16),
+                                MySqlValue::UInt(u) => Some(u as i16),
+                                _ => None,
+                            });
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Int32 => {
+                    let mut builder = Int32Builder::new();
+                    for row in rows {
+                        let value: Option<i32> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .and_then(|v| match v {
+                                MySqlValue::Int(i) => Some(i as i32),
+                                MySqlValue::UInt(u) => Some(u as i32),
+                                _ => None,
+                            });
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Int64 => {
+                    let mut builder = Int64Builder::new();
+                    for row in rows {
+                        let value: Option<i64> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .and_then(|v| match v {
+                                MySqlValue::Int(i) => Some(i),
+                                MySqlValue::UInt(u) => Some(u as i64),
+                                _ => None,
+                            });
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Float32 => {
+                    let mut builder = Float32Builder::new();
+                    for row in rows {
+                        let value: Option<f32> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .and_then(|v| match v {
+                                MySqlValue::Float(f) => Some(f),
+                                MySqlValue::Double(d) => Some(d as f32),
+                                _ => None,
+                            });
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Float64 => {
+                    let mut builder = Float64Builder::new();
+                    for row in rows {
+                        let value: Option<f64> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .and_then(|v| match v {
+                                MySqlValue::Double(d) => Some(d),
+                                MySqlValue::Float(f) => Some(f as f64),
+                                _ => None,
+                            });
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Utf8 => {
+                    let mut builder = StringBuilder::new();
+                    for row in rows {
+                        let value: Option<String> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .map(|v| Self::mysql_value_to_json(v).to_string());
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Date32 => {
+                    let mut builder = Date32Builder::new();
+                    for row in rows {
+                        let days: Option<i32> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .and_then(|v| match v {
+                                MySqlValue::Date(y, m, d, _, _, _, _) => {
+                                    chrono::NaiveDate::from_ymd_opt(y as i32, m as u32, d as u32)
+                                        .map(|date| {
+                                            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+                                            date.signed_duration_since(epoch).num_days() as i32
+                                        })
+                                }
+                                _ => None,
+                            });
+                        builder.append_option(days);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Timestamp(_, _) => {
+                    let mut builder = TimestampMicrosecondBuilder::new();
+                    for row in rows {
+                        let micros: Option<i64> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .and_then(|v| match v {
+                                MySqlValue::Date(y, m, d, h, min, s, us) => {
+                                    chrono::NaiveDate::from_ymd_opt(y as i32, m as u32, d as u32)
+                                        .and_then(|date| {
+                                            date.and_hms_micro_opt(h as u32, min as u32, s as u32, us)
+                                        })
+                                        .map(|dt| dt.and_utc().timestamp_micros())
+                                }
+                                _ => None,
+                            });
+                        builder.append_option(micros);
+                    }
+                    Arc::new(builder.finish())
+                }
+                _ => {
+                    let mut builder = StringBuilder::new();
+                    for row in rows {
+                        let value: Option<String> = row.get_opt(col_idx)
+                            .and_then(|v| v.ok())
+                            .map(|v| Self::mysql_value_to_json(v).to_string());
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+            };
+            columns.push(array);
+        }
+
+        datafusion::arrow::record_batch::RecordBatch::try_new(schema, columns)
+            .map_err(|e| AppError::Database(format!("Failed to create RecordBatch: {}", e)))
     }
 }
