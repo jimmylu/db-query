@@ -56,3 +56,5 @@
 改变计划，由于考虑扩展性，决定放弃aws cloudscape的使用，继续保持ant design的设计。
 现在phase 7的内容变为基于现有前端框架，调整UI的样式和布局，进而实现模拟aws的风格的效果 
 
+## 继续phase8
+继续实现datafusion与doris和apache druid的集成

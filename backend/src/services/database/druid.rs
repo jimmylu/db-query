@@ -267,13 +267,37 @@ impl DatabaseAdapter for DruidAdapter {
         datafusion_sql: &str,
         timeout_secs: u64,
     ) -> Result<(datafusion::arrow::datatypes::SchemaRef, Vec<datafusion::arrow::record_batch::RecordBatch>), AppError> {
-        // For now, execute directly as Druid SQL
-        // Full Arrow conversion can be added later
-        let _result = self.execute_query(datafusion_sql, timeout_secs).await?;
+        use datafusion::arrow::datatypes::{DataType, Field, Schema, TimeUnit};
+        use datafusion::arrow::array::{
+            ArrayRef, Int64Builder, Float64Builder, StringBuilder,
+            BooleanBuilder, Date32Builder, TimestampMicrosecondBuilder,
+        };
+        use datafusion::arrow::record_batch::RecordBatch;
+        use std::sync::Arc;
 
-        Err(AppError::NotImplemented(
-            "Full Druid to Arrow conversion not yet implemented. Use execute_query instead.".to_string()
-        ))
+        // Execute SQL query via Druid SQL API
+        let response = self.execute_sql(datafusion_sql, timeout_secs).await?;
+
+        if response.columns.is_empty() || response.rows.is_empty() {
+            // Return empty result
+            let schema = Arc::new(Schema::empty());
+            let batch = RecordBatch::new_empty(schema.clone());
+            return Ok((schema, vec![batch]));
+        }
+
+        // Build Arrow schema from Druid column metadata
+        let mut fields = Vec::new();
+        for col in &response.columns {
+            let data_type = Self::druid_type_to_arrow(&col.data_type);
+            fields.push(Field::new(&col.name, data_type, true)); // nullable=true
+        }
+
+        let schema = Arc::new(Schema::new(fields));
+
+        // Convert Druid response rows to Arrow RecordBatch
+        let batch = Self::convert_druid_rows_to_arrow(&response, schema.clone())?;
+
+        Ok((schema, vec![batch]))
     }
 
     async fn test_connection(&self) -> Result<(), AppError> {
@@ -294,5 +318,122 @@ impl DatabaseAdapter for DruidAdapter {
         }
 
         Ok(())
+    }
+}
+
+impl DruidAdapter {
+    /// Map Druid data type to Arrow DataType
+    fn druid_type_to_arrow(druid_type: &str) -> datafusion::arrow::datatypes::DataType {
+        use datafusion::arrow::datatypes::{DataType, TimeUnit};
+
+        match druid_type.to_uppercase().as_str() {
+            "LONG" | "BIGINT" => DataType::Int64,
+            "FLOAT" => DataType::Float32,
+            "DOUBLE" => DataType::Float64,
+            "STRING" | "VARCHAR" => DataType::Utf8,
+            "TIMESTAMP" => DataType::Timestamp(TimeUnit::Millisecond, None),
+            "DATE" => DataType::Date32,
+            "BOOLEAN" => DataType::Boolean,
+            _ => DataType::Utf8, // Default to string for unknown types
+        }
+    }
+
+    /// Convert Druid response rows to Arrow RecordBatch
+    fn convert_druid_rows_to_arrow(
+        response: &DruidSqlResponse,
+        schema: std::sync::Arc<datafusion::arrow::datatypes::Schema>,
+    ) -> Result<datafusion::arrow::record_batch::RecordBatch, AppError> {
+        use datafusion::arrow::datatypes::DataType;
+        use datafusion::arrow::array::{
+            Array, Int64Builder, Float32Builder, Float64Builder, StringBuilder,
+            BooleanBuilder, Date32Builder, TimestampMillisecondBuilder,
+        };
+        use std::sync::Arc;
+
+        let mut columns: Vec<Arc<dyn Array>> = Vec::new();
+
+        for (col_idx, field) in schema.fields().iter().enumerate() {
+            let array: Arc<dyn Array> = match field.data_type() {
+                DataType::Int64 => {
+                    let mut builder = Int64Builder::new();
+                    for row in &response.rows {
+                        let value = row.get(col_idx)
+                            .and_then(|v| v.as_i64());
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Float32 => {
+                    let mut builder = Float32Builder::new();
+                    for row in &response.rows {
+                        let value = row.get(col_idx)
+                            .and_then(|v| v.as_f64())
+                            .map(|f| f as f32);
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Float64 => {
+                    let mut builder = Float64Builder::new();
+                    for row in &response.rows {
+                        let value = row.get(col_idx)
+                            .and_then(|v| v.as_f64());
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Boolean => {
+                    let mut builder = BooleanBuilder::new();
+                    for row in &response.rows {
+                        let value = row.get(col_idx)
+                            .and_then(|v| v.as_bool());
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Date32 => {
+                    let mut builder = Date32Builder::new();
+                    for row in &response.rows {
+                        let value = row.get(col_idx)
+                            .and_then(|v| {
+                                // Parse ISO date string to days since epoch
+                                v.as_str().and_then(|s| {
+                                    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                                        .ok()
+                                        .map(|date| {
+                                            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+                                            date.signed_duration_since(epoch).num_days() as i32
+                                        })
+                                })
+                            });
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                DataType::Timestamp(_, _) => {
+                    let mut builder = TimestampMillisecondBuilder::new();
+                    for row in &response.rows {
+                        let value = row.get(col_idx)
+                            .and_then(|v| v.as_i64());
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+                _ => {
+                    // Default: convert to string
+                    let mut builder = StringBuilder::new();
+                    for row in &response.rows {
+                        let value = row.get(col_idx)
+                            .map(|v| v.to_string());
+                        builder.append_option(value);
+                    }
+                    Arc::new(builder.finish())
+                }
+            };
+            columns.push(array);
+        }
+
+        datafusion::arrow::record_batch::RecordBatch::try_new(schema, columns)
+            .map_err(|e| AppError::Database(format!("Failed to create RecordBatch: {}", e)))
     }
 }
