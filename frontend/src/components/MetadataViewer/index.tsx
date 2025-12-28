@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Tag, Space, Button, Typography, Spin, Empty, Collapse } from 'antd';
-import { DatabaseOutlined, ReloadOutlined, TableOutlined, EyeOutlined } from '@ant-design/icons';
+import { DatabaseOutlined, ReloadOutlined, TableOutlined, EyeOutlined, FolderOutlined } from '@ant-design/icons';
 import { metadataService } from '../../services/metadata';
-import { DatabaseMetadata, Table as TableType, View as ViewType } from '../../types';
+import { domainService } from '../../services/domain';
+import { DatabaseMetadata, Table as TableType, View as ViewType, DatabaseConnection, DomainResponse } from '../../types';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
 
 interface MetadataViewerProps {
   connectionId: string | null;
+  connection?: DatabaseConnection;
 }
 
-export const MetadataViewer: React.FC<MetadataViewerProps> = ({ connectionId }) => {
+export const MetadataViewer: React.FC<MetadataViewerProps> = ({ connectionId, connection }) => {
   const [metadata, setMetadata] = useState<DatabaseMetadata | null>(null);
   const [loading, setLoading] = useState(false);
   const [cached, setCached] = useState(false);
+  const [domain, setDomain] = useState<DomainResponse | null>(null);
 
   const loadMetadata = async (refresh: boolean = false) => {
     if (!connectionId) return;
@@ -38,6 +41,22 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({ connectionId }) 
       setMetadata(null);
     }
   }, [connectionId]);
+
+  useEffect(() => {
+    const loadDomain = async () => {
+      if (connection?.domain_id) {
+        try {
+          const domainData = await domainService.getDomain(connection.domain_id);
+          setDomain(domainData);
+        } catch (error) {
+          console.error('Failed to load domain:', error);
+        }
+      } else {
+        setDomain(null);
+      }
+    };
+    loadDomain();
+  }, [connection?.domain_id]);
 
   if (!connectionId) {
     return (
@@ -105,6 +124,11 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({ connectionId }) 
           <DatabaseOutlined />
           <span>数据库元数据</span>
           {cached && <Tag color="blue">缓存</Tag>}
+          {domain && (
+            <Tag icon={<FolderOutlined />} color="purple">
+              {domain.name}
+            </Tag>
+          )}
         </Space>
       }
       extra={

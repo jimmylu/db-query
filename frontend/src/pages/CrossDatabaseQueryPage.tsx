@@ -49,10 +49,28 @@ export const CrossDatabaseQueryPage: React.FC = () => {
   const [crossDbResponse, setCrossDbResponse] = useState<CrossDatabaseQueryResponse | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [showSamples, setShowSamples] = useState(false);
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
 
   // Load connections on mount
   useEffect(() => {
     loadConnections();
+
+    // Listen for global domain changes from CustomHeader
+    const handleDomainChanged = (event: CustomEvent) => {
+      setSelectedDomainId(event.detail.domainId);
+    };
+
+    window.addEventListener('domainChanged', handleDomainChanged as EventListener);
+
+    // Load initial domain from localStorage
+    const storedDomainId = localStorage.getItem('selectedDomainId');
+    if (storedDomainId) {
+      setSelectedDomainId(storedDomainId);
+    }
+
+    return () => {
+      window.removeEventListener('domainChanged', handleDomainChanged as EventListener);
+    };
   }, []);
 
   // Auto-configure aliases when connections change
@@ -201,8 +219,13 @@ export const CrossDatabaseQueryPage: React.FC = () => {
 
   const sampleQueries = crossDatabaseQueryService.getSampleQueries();
 
+  // Filter connections by selected domain
+  const filteredConnections = selectedDomainId
+    ? connections.filter(conn => conn.domain_id === selectedDomainId)
+    : connections;
+
   return (
-    <div style={{ padding: '24px', background: '#f0f2f5' }}>
+    <div style={{ background: '#f0f2f5' }}>
       <Row gutter={[24, 24]}>
         <Col xs={24}>
           <Space direction="vertical" style={{ width: '100%' }} size="large">
@@ -243,7 +266,7 @@ export const CrossDatabaseQueryPage: React.FC = () => {
                     style={{ width: '100%', marginTop: 8 }}
                     value={selectedConnectionIds}
                     onChange={setSelectedConnectionIds}
-                    options={connections.map((conn) => ({
+                    options={filteredConnections.map((conn) => ({
                       label: (
                         <Space>
                           <Tag color={conn.status === 'connected' ? 'green' : 'red'}>

@@ -3,13 +3,45 @@
 @tailwind utilities;
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  /* AWS Color Palette */
+  --aws-squid-ink: #232F3E;
+  --aws-smile-orange: #FF9900;
+  --aws-pacific-blue: #0972D3;
+  --aws-dark-navy: #16191F;
+  --aws-light-gray: #F2F3F3;
+  --aws-border-gray: #D5DBDB;
+  --aws-text-secondary: #545B64;
+  --aws-text-tertiary: #879596;
+  --aws-success-green: #037F0C;
+  --aws-error-red: #D13212;
+
+  /* AWS Spacing */
+  --aws-space-xs: 4px;
+  --aws-space-s: 8px;
+  --aws-space-m: 12px;
+  --aws-space-l: 16px;
+  --aws-space-xl: 20px;
+  --aws-space-xxl: 24px;
+
+  /* AWS Borders */
+  --aws-border-width: 1px;
+  --aws-border-radius: 2px;
+  --aws-border-radius-large: 4px;
+
+  /* AWS Shadows */
+  --aws-shadow-default: 0 1px 1px 0 rgba(0, 28, 36, 0.3), 1px 1px 1px 0 rgba(0, 28, 36, 0.15), -1px 1px 1px 0 rgba(0, 28, 36, 0.15);
+  --aws-shadow-sticky: 0 2px 4px 0 rgba(0, 28, 36, 0.5);
+  --aws-shadow-dropdown: 0 4px 20px 1px rgba(0, 28, 36, 0.1);
+
+  /* Font Settings */
+  font-family: "Amazon Ember", "Helvetica Neue", Roboto, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* Light mode by default (AWS Console style) */
+  color-scheme: light;
+  color: var(--aws-dark-navy);
+  background-color: var(--aws-light-gray);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -21,10 +53,32 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--aws-light-gray);
 }
 
 #root {
   width: 100%;
   margin: 0 auto;
+  background-color: var(--aws-light-gray);
+}
+
+/* AWS-style scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAFAFA;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #AAB7B8;
+  border-radius: 6px;
+  border: 2px solid #FAFAFA;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #879596;
 }
 

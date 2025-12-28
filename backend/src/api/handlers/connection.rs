@@ -97,6 +97,7 @@ pub async fn create_connection(
         payload.name,
         payload.connection_url.clone(),
         payload.database_type.clone(),
+        payload.domain_id.clone(),
     );
     connection.id = connection_id.clone();
 
