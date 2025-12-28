@@ -5,66 +5,71 @@ import {
   ErrorComponent,
   ThemedLayoutV2,
   ThemedSiderV2,
-  ThemedTitleV2,
   useNotificationProvider,
 } from '@refinedev/antd';
-import { App as AntdApp } from 'antd';
+import { App as AntdApp, ConfigProvider } from 'antd';
 import '@refinedev/antd/dist/reset.css';
 
 import { dataProvider } from './providers/dataProvider';
 import { Dashboard } from './pages/Dashboard';
-import { QueryPage } from './pages/QueryPage';
-import { CrossDatabaseQueryPage } from './pages/CrossDatabaseQueryPage';
+import { DataExplorePage } from './pages/DataExplorePage';
+import { CustomHeader } from './components/CustomHeader';
+import { CustomTitle } from './components/CustomTitle';
+import { AWSDynamicBreadcrumbs } from './components/AWSDynamicBreadcrumbs';
+import { awsTheme } from './theme/aws-theme';
 
 function App() {
   return (
     <BrowserRouter>
       <RefineKbarProvider>
-        <AntdApp>
-          <Refine
-            dataProvider={dataProvider}
-            notificationProvider={useNotificationProvider}
-            resources={[
-              {
-                name: 'connections',
-                list: '/',
-              },
-              {
-                name: 'queries',
-                list: '/queries',
-              },
-              {
-                name: 'cross-database',
-                list: '/cross-database',
-              },
-            ]}
-            options={{
-              syncWithLocation: true,
-              warnWhenUnsavedChanges: true,
-            }}
-          >
-            <Routes>
-              <Route
-                element={
-                  <ThemedLayoutV2
-                    Sider={() => <ThemedSiderV2 fixed />}
-                    Title={({ collapsed }) => (
-                      <ThemedTitleV2 collapsed={collapsed} text="DB Query Tool" />
-                    )}
-                  >
-                    <Outlet />
-                  </ThemedLayoutV2>
-                }
-              >
-                <Route index element={<Dashboard />} />
-                <Route path="queries" element={<QueryPage />} />
-                <Route path="cross-database" element={<CrossDatabaseQueryPage />} />
-                <Route path="*" element={<ErrorComponent />} />
-              </Route>
-            </Routes>
-            <RefineKbar />
-          </Refine>
-        </AntdApp>
+        <ConfigProvider theme={awsTheme}>
+          <AntdApp>
+            <Refine
+              dataProvider={dataProvider}
+              notificationProvider={useNotificationProvider}
+              resources={[
+                {
+                  name: 'connections',
+                  list: '/',
+                  meta: {
+                    label: '数据集列表',
+                  },
+                },
+                {
+                  name: 'data-explore',
+                  list: '/data-explore',
+                  meta: {
+                    label: '数据探索',
+                  },
+                },
+              ]}
+              options={{
+                syncWithLocation: true,
+                warnWhenUnsavedChanges: true,
+              }}
+            >
+              <Routes>
+                <Route
+                  element={
+                    <ThemedLayoutV2
+                      Sider={() => <ThemedSiderV2 fixed Title={({ collapsed }) => <CustomTitle collapsed={collapsed} />} />}
+                      Header={() => <CustomHeader />}
+                      Title={({ collapsed }) => <CustomTitle collapsed={collapsed} />}
+                    >
+                      <AWSDynamicBreadcrumbs />
+                      <Outlet />
+                    </ThemedLayoutV2>
+                  }
+                >
+                  <Route index element={<Dashboard />} />
+                  <Route path="data-explore" element={<DataExplorePage />} />
+                  <Route path="*" element={<ErrorComponent />} />
+                </Route>
+              </Routes>
+              <RefineKbar />
+            </Refine>
+          </AntdApp>
+        </ConfigProvider>
       </RefineKbarProvider>
     </BrowserRouter>
   );

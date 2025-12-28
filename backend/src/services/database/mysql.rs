@@ -55,6 +55,7 @@ impl DatabaseAdapter for MySQLAdapter {
             None,
             self.connection_url.clone(),
             "mysql".to_string(),
+            None,
         );
         db_connection.id = connection_id.clone();
         db_connection.mark_connected();

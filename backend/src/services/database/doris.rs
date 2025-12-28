@@ -64,6 +64,7 @@ impl DatabaseAdapter for DorisAdapter {
             None,
             self.connection_url.clone(),
             "doris".to_string(),
+            None,
         );
         db_connection.id = connection_id.clone();
         db_connection.mark_connected();

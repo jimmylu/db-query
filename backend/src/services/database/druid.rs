@@ -182,6 +182,7 @@ impl DatabaseAdapter for DruidAdapter {
             None,
             self.base_url.clone(),
             "druid".to_string(),
+            None,
         );
         db_connection.id = connection_id.clone();
         db_connection.mark_connected();
