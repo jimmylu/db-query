@@ -1,6 +1,6 @@
 use sqlparser::ast::Statement;
 use sqlparser::parser::Parser;
-use sqlparser::dialect::PostgreSqlDialect;
+use sqlparser::dialect::{PostgreSqlDialect, GenericDialect};
 use crate::api::middleware::AppError;
 
 /// SQL validation service for ensuring queries are safe and valid
@@ -8,11 +8,28 @@ pub struct SqlValidator;
 
 impl SqlValidator {
     /// Validate SQL query and ensure it's a SELECT statement
+    /// Supports both PostgreSQL and DataFusion SQL syntax via GenericDialect fallback
     pub fn validate_select_only(sql: &str) -> Result<String, AppError> {
-        let dialect = PostgreSqlDialect {};
-        let mut parser = Parser::new(&dialect).try_with_sql(sql)
+        // Try PostgreSQL dialect first (most common)
+        let postgres_result = Self::parse_and_validate_with_dialect(sql, &PostgreSqlDialect {});
+
+        // If PostgreSQL parsing fails, try with GenericDialect (supports DataFusion extensions)
+        match postgres_result {
+            Ok(validated) => Ok(validated),
+            Err(_) => {
+                Self::parse_and_validate_with_dialect(sql, &GenericDialect {})
+            }
+        }
+    }
+
+    /// Internal helper to parse and validate SQL with a specific dialect
+    fn parse_and_validate_with_dialect<D: sqlparser::dialect::Dialect>(
+        sql: &str,
+        dialect: &D,
+    ) -> Result<String, AppError> {
+        let mut parser = Parser::new(dialect).try_with_sql(sql)
             .map_err(|e| AppError::InvalidSql(format!("SQL parsing error: {}", e)))?;
-        
+
         // Parse SQL statement
         let ast = parser.parse_statements()
             .map_err(|e| AppError::InvalidSql(format!("SQL parsing error: {}", e)))?;
@@ -56,9 +73,25 @@ impl SqlValidator {
 
     /// Check if query has LIMIT clause and append if missing
     /// Uses AST parsing to properly detect LIMIT clauses, avoiding false positives
+    /// Supports both PostgreSQL and DataFusion SQL syntax
     pub fn ensure_limit(sql: &str, default_limit: u64) -> Result<String, AppError> {
-        let dialect = PostgreSqlDialect {};
-        let mut parser = Parser::new(&dialect).try_with_sql(sql)
+        // Try PostgreSQL dialect first
+        let postgres_result = Self::parse_for_limit(sql, &PostgreSqlDialect {}, default_limit);
+
+        // Fallback to GenericDialect if PostgreSQL parsing fails
+        match postgres_result {
+            Ok(result) => Ok(result),
+            Err(_) => Self::parse_for_limit(sql, &GenericDialect {}, default_limit)
+        }
+    }
+
+    /// Internal helper to parse and check LIMIT with specific dialect
+    fn parse_for_limit<D: sqlparser::dialect::Dialect>(
+        sql: &str,
+        dialect: &D,
+        default_limit: u64,
+    ) -> Result<String, AppError> {
+        let mut parser = Parser::new(dialect).try_with_sql(sql)
             .map_err(|e| AppError::InvalidSql(format!("SQL parsing error: {}", e)))?;
 
         // Parse SQL statement
@@ -115,9 +148,20 @@ impl SqlValidator {
     }
 
     /// Check if SQL has LIMIT clause using AST parsing
+    /// Supports both PostgreSQL and DataFusion SQL syntax
     fn has_limit(sql: &str) -> bool {
-        let dialect = PostgreSqlDialect {};
-        let mut parser = match Parser::new(&dialect).try_with_sql(sql) {
+        // Try PostgreSQL dialect first
+        if Self::has_limit_with_dialect(sql, &PostgreSqlDialect {}) {
+            return true;
+        }
+
+        // Fallback to GenericDialect
+        Self::has_limit_with_dialect(sql, &GenericDialect {})
+    }
+
+    /// Internal helper to check LIMIT with specific dialect
+    fn has_limit_with_dialect<D: sqlparser::dialect::Dialect>(sql: &str, dialect: &D) -> bool {
+        let mut parser = match Parser::new(dialect).try_with_sql(sql) {
             Ok(p) => p,
             Err(_) => return false,
         };
