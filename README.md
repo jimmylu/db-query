@@ -298,3 +298,11 @@ make test-frontend
 
 欢迎提交 Issue 和 Pull Request！
 
+## Contributors
+
+We sincerely thank the following contributors for their time, ideas, and dedication to this project:
+
+- jimmylu <mr.jimmylu@gmail.comn>
+- pipilu <mr.jimmylu@gmail.com>
+
+Your contributions continue to make this project stronger and more valuable to the community.
